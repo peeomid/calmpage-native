@@ -62,14 +62,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            HStack(spacing: 0) {
-                if !model.sidebarCollapsed && !model.focusMode {
-                    LeftSidebarView()
-                        .frame(width: 320)
-                    Divider()
-                }
-                ReaderColumnView()
-            }
+            NativeSplitShell(model: model)
             if !model.workspaceRefreshMessage.isEmpty || model.readmdSettings.status != .ready {
                 AppStatusToast()
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
@@ -107,6 +100,58 @@ struct ContentView: View {
         .tint(AppTheme.activeIcon(model.selectedTheme))
         .sheet(isPresented: $model.settingsOpen) { ReaderSettingsView() }
         .transaction { $0.animation = nil }
+    }
+}
+
+struct NativeSplitShell: NSViewControllerRepresentable {
+    @ObservedObject var model: AppModel
+
+    func makeNSViewController(context: Context) -> NSSplitViewController {
+        let controller = NSSplitViewController()
+        controller.splitView.isVertical = true
+        controller.splitView.dividerStyle = .thin
+
+        let sidebarController = NSHostingController(rootView: sidebarView)
+        let readerController = NSHostingController(rootView: readerView)
+
+        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
+        sidebarItem.minimumThickness = 260
+        sidebarItem.maximumThickness = 420
+        sidebarItem.canCollapse = true
+        sidebarItem.isCollapsed = model.sidebarCollapsed || model.focusMode
+
+        let readerItem = NSSplitViewItem(viewController: readerController)
+        readerItem.minimumThickness = 620
+        readerItem.canCollapse = false
+
+        controller.addSplitViewItem(sidebarItem)
+        controller.addSplitViewItem(readerItem)
+        context.coordinator.sidebarItem = sidebarItem
+        context.coordinator.sidebarController = sidebarController
+        context.coordinator.readerController = readerController
+        return controller
+    }
+
+    func updateNSViewController(_ controller: NSSplitViewController, context: Context) {
+        context.coordinator.sidebarController?.rootView = sidebarView
+        context.coordinator.readerController?.rootView = readerView
+        context.coordinator.sidebarItem?.animator().isCollapsed = model.sidebarCollapsed || model.focusMode
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    private var sidebarView: AnyView {
+        AnyView(LeftSidebarView().environmentObject(model))
+    }
+
+    private var readerView: AnyView {
+        AnyView(ReaderColumnView().environmentObject(model))
+    }
+
+    final class Coordinator {
+        var sidebarItem: NSSplitViewItem?
+        var sidebarController: NSHostingController<AnyView>?
+        var readerController: NSHostingController<AnyView>?
     }
 }
 
