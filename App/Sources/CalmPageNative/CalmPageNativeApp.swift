@@ -63,6 +63,7 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             NativeSplitShell(model: model)
+                .ignoresSafeArea(.container, edges: .top)
             if !model.workspaceRefreshMessage.isEmpty || model.readmdSettings.status != .ready {
                 AppStatusToast()
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
@@ -261,64 +262,55 @@ struct LeftSidebarView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            SidebarTopBarView()
-            Divider()
-            HStack(spacing: 0) {
-                VStack(spacing: 14) {
-                    RailButton(mode: .library, icon: "folder")
-                    RailButton(mode: .workspaces, icon: "square.grid.2x2")
-                    RailButton(mode: .pins, icon: "pin")
-                    Spacer()
-                    Button { model.openSettings() } label: { Image(systemName: "gearshape") }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(AppTheme.icon(model.selectedTheme))
-                        .help("Settings (⌘,)")
-                    Button { model.openHelp() } label: { Image(systemName: "questionmark.circle") }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(AppTheme.icon(model.selectedTheme))
-                        .help("Help")
+        HStack(spacing: 0) {
+            SidebarRailView()
+            VStack(alignment: .leading, spacing: 10) {
+                SidebarHeaderView()
+                switch model.sidebarMode {
+                case .library: LibraryPaneView()
+                case .workspaces: WorkspacePaneView()
+                case .pins: PinsPaneView()
                 }
-                .padding(.top, 14)
-                .padding(.bottom, 16)
-                .frame(width: 52)
-                .background(AppTheme.railBackground(model.selectedTheme))
-
-                VStack(alignment: .leading, spacing: 10) {
-                    SidebarHeaderView()
-                    switch model.sidebarMode {
-                    case .library: LibraryPaneView()
-                    case .workspaces: WorkspacePaneView()
-                    case .pins: PinsPaneView()
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, 14)
-                .padding(.bottom, 14)
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 56)
+            .padding(.bottom, 14)
+            .background(AppTheme.sidebarBackground(model.selectedTheme))
         }
         .background(AppTheme.sidebarBackground(model.selectedTheme))
     }
 }
 
-struct SidebarTopBarView: View {
+struct SidebarRailView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        HStack(spacing: 8) {
+        VStack(spacing: 14) {
+            Spacer().frame(height: 44)
             Button { model.sidebarCollapsed.toggle() } label: { Image(systemName: "sidebar.left") }
+                .buttonStyle(.borderless)
+                .foregroundStyle(AppTheme.icon(model.selectedTheme))
                 .help("Toggle sidebar (⌘B)")
-            Button { model.openPalette() } label: { Image(systemName: "magnifyingglass") }
-                .help("Command palette (⌘P)")
+            RailButton(mode: .library, icon: "folder")
+            RailButton(mode: .workspaces, icon: "square.grid.2x2")
+            RailButton(mode: .pins, icon: "pin")
             Spacer()
+            Button { model.openPalette() } label: { Image(systemName: "magnifyingglass") }
+                .buttonStyle(.borderless)
+                .foregroundStyle(AppTheme.icon(model.selectedTheme))
+                .help("Command palette (⌘P)")
+            Button { model.openSettings() } label: { Image(systemName: "gearshape") }
+                .buttonStyle(.borderless)
+                .foregroundStyle(AppTheme.icon(model.selectedTheme))
+                .help("Settings (⌘,)")
+            Button { model.openHelp() } label: { Image(systemName: "questionmark.circle") }
+                .buttonStyle(.borderless)
+                .foregroundStyle(AppTheme.icon(model.selectedTheme))
+                .help("Help")
         }
-        .buttonStyle(.borderless)
-        .foregroundStyle(AppTheme.icon(model.selectedTheme))
-        .controlSize(.small)
-        .padding(.leading, 52)
-        .padding(.trailing, 12)
-        .frame(height: 42)
-        .background(AppTheme.sidebarBackground(model.selectedTheme))
+        .padding(.bottom, 16)
+        .frame(width: 52)
+        .background(AppTheme.railBackground(model.selectedTheme))
     }
 }
 
@@ -884,7 +876,8 @@ struct ReaderTopTabBarView: View {
         .foregroundStyle(AppTheme.icon(model.selectedTheme))
         .controlSize(.small)
         .padding(.horizontal, 12)
-        .frame(height: 42)
+        .padding(.top, 8)
+        .frame(height: 50)
         .background(AppTheme.windowBackground(model.selectedTheme))
     }
 }
