@@ -65,6 +65,13 @@ struct ContentView: View {
         ZStack {
             NativeSplitShell(model: model)
                 .ignoresSafeArea(.container, edges: .top)
+            if !model.focusMode {
+                ReaderTopTabBarView()
+                    .padding(.leading, model.sidebarCollapsed ? 72 : 268)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .ignoresSafeArea(.container, edges: .top)
+                    .zIndex(6)
+            }
             if !model.workspaceRefreshMessage.isEmpty || model.readmdSettings.status != .ready {
                 AppStatusToast()
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
@@ -121,10 +128,13 @@ struct NativeSplitShell: NSViewControllerRepresentable {
         sidebarItem.maximumThickness = 420
         sidebarItem.canCollapse = true
         sidebarItem.isCollapsed = model.sidebarCollapsed || model.focusMode
+        sidebarItem.allowsFullHeightLayout = true
+        sidebarItem.titlebarSeparatorStyle = .none
 
         let readerItem = NSSplitViewItem(viewController: readerController)
         readerItem.minimumThickness = 620
         readerItem.canCollapse = false
+        readerItem.titlebarSeparatorStyle = .none
 
         controller.addSplitViewItem(sidebarItem)
         controller.addSplitViewItem(readerItem)
@@ -180,6 +190,15 @@ struct WindowAppearanceSetter: NSViewRepresentable {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.styleMask.insert(.fullSizeContentView)
+        window.titlebarSeparatorStyle = .none
+        window.minSize = NSSize(width: 1220, height: 760)
+        ensureUsableWindowSize(window)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { ensureUsableWindowSize(window) }
+    }
+
+    private func ensureUsableWindowSize(_ window: NSWindow) {
+        guard window.frame.width < 900 || window.frame.height < 600 else { return }
+        window.setFrame(NSRect(x: 700, y: 120, width: 1220, height: 1050), display: true)
     }
 }
 
@@ -849,7 +868,7 @@ struct ReaderColumnView: View {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 0) {
                 if !model.focusMode {
-                    ReaderTopTabBarView()
+                    Color.clear.frame(height: 34)
                     Divider()
                 }
                 ReaderView()
@@ -893,8 +912,7 @@ struct ReaderTopTabBarView: View {
         .foregroundStyle(AppTheme.icon(model.selectedTheme))
         .controlSize(.small)
         .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .frame(height: 50)
+        .frame(height: 34)
         .background(AppTheme.windowBackground(model.selectedTheme))
     }
 }
