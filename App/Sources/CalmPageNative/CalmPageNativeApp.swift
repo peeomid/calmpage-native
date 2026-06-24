@@ -285,6 +285,7 @@ struct LeftSidebarView: View {
         HStack(spacing: 0) {
             SidebarRailView()
             VStack(alignment: .leading, spacing: 10) {
+                SidebarToolbarView()
                 SidebarHeaderView()
                 switch model.sidebarMode {
                 case .library: LibraryPaneView()
@@ -293,7 +294,7 @@ struct LeftSidebarView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.top, 18)
+            .padding(.top, 8)
             .padding(.bottom, 14)
             .background(AppTheme.sidebarBackground(model.selectedTheme))
         }
@@ -306,8 +307,7 @@ struct SidebarRailView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Spacer().frame(height: 12)
-            RailIconButton(icon: "sidebar.left", help: "Toggle sidebar (⌘B)") { model.sidebarCollapsed.toggle() }
+            Spacer().frame(height: 54)
             RailButton(mode: .library, icon: "folder")
             RailButton(mode: .workspaces, icon: "square.grid.2x2")
             RailButton(mode: .pins, icon: "pin")
@@ -319,6 +319,34 @@ struct SidebarRailView: View {
         .padding(.bottom, 16)
         .frame(width: 52)
         .background(AppTheme.railBackground(model.selectedTheme))
+    }
+}
+
+struct SidebarToolbarView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button { model.openFolderPicker(additive: true) } label: {
+                Image(systemName: "folder.badge.plus")
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .foregroundStyle(AppTheme.icon(model.selectedTheme))
+            .help("Add folder (⇧⌘O)")
+            Spacer()
+            Button { model.sidebarCollapsed.toggle() } label: {
+                Image(systemName: "sidebar.left")
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .foregroundStyle(AppTheme.icon(model.selectedTheme))
+            .help("Toggle sidebar (⌘B)")
+        }
+        .font(.system(size: 14, weight: .medium))
+        .frame(height: 32)
     }
 }
 
@@ -383,7 +411,7 @@ enum AppTheme {
         case "Midnight": return Color(red: 0.15, green: 0.18, blue: 0.21)
         case "Sepia": return Color(red: 0.91, green: 0.84, blue: 0.72)
         case "Paper": return Color(red: 0.96, green: 0.92, blue: 0.82)
-        default: return Color(red: 0.94, green: 0.945, blue: 0.935)
+        default: return Color(red: 0.925, green: 0.932, blue: 0.922)
         }
     }
 
@@ -393,7 +421,7 @@ enum AppTheme {
         case "Midnight": return Color(red: 0.12, green: 0.15, blue: 0.18)
         case "Sepia": return Color(red: 0.86, green: 0.78, blue: 0.66)
         case "Paper": return Color(red: 0.92, green: 0.86, blue: 0.74)
-        default: return Color(red: 0.90, green: 0.915, blue: 0.90)
+        default: return Color(red: 0.875, green: 0.895, blue: 0.875)
         }
     }
 
@@ -515,16 +543,6 @@ struct LibraryPaneView: View {
             .scrollContentBackground(.hidden)
             .background(AppTheme.sidebarBackground(model.selectedTheme))
             .listStyle(.plain)
-            Button { model.openFolderPicker(additive: true) } label: {
-                Label("Add Folder", systemImage: "plus")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(AppTheme.activeIcon(model.selectedTheme))
-            .padding(.vertical, 6)
-            .background(AppTheme.controlBackground(model.selectedTheme).opacity(0.72))
-            .clipShape(RoundedRectangle(cornerRadius: 7))
-            .help("Add folder to library (⇧⌘O)")
         }
     }
 }
