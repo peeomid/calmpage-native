@@ -18,6 +18,7 @@ struct CalmPageNativeApp: App {
                 .environmentObject(model)
                 .frame(minWidth: 1220, minHeight: 760)
         }
+        .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) {
@@ -287,30 +288,38 @@ struct SidebarRailView: View {
     var body: some View {
         VStack(spacing: 14) {
             Spacer().frame(height: 44)
-            Button { model.sidebarCollapsed.toggle() } label: { Image(systemName: "sidebar.left") }
-                .buttonStyle(.borderless)
-                .foregroundStyle(AppTheme.icon(model.selectedTheme))
-                .help("Toggle sidebar (⌘B)")
+            RailIconButton(icon: "sidebar.left", help: "Toggle sidebar (⌘B)") { model.sidebarCollapsed.toggle() }
             RailButton(mode: .library, icon: "folder")
             RailButton(mode: .workspaces, icon: "square.grid.2x2")
             RailButton(mode: .pins, icon: "pin")
             Spacer()
-            Button { model.openPalette() } label: { Image(systemName: "magnifyingglass") }
-                .buttonStyle(.borderless)
-                .foregroundStyle(AppTheme.icon(model.selectedTheme))
-                .help("Command palette (⌘P)")
-            Button { model.openSettings() } label: { Image(systemName: "gearshape") }
-                .buttonStyle(.borderless)
-                .foregroundStyle(AppTheme.icon(model.selectedTheme))
-                .help("Settings (⌘,)")
-            Button { model.openHelp() } label: { Image(systemName: "questionmark.circle") }
-                .buttonStyle(.borderless)
-                .foregroundStyle(AppTheme.icon(model.selectedTheme))
-                .help("Help")
+            RailIconButton(icon: "magnifyingglass", help: "Command palette (⌘P)") { model.openPalette() }
+            RailIconButton(icon: "gearshape", help: "Settings (⌘,)") { model.openSettings() }
+            RailIconButton(icon: "questionmark.circle", help: "Help") { model.openHelp() }
         }
         .padding(.bottom, 16)
         .frame(width: 52)
         .background(AppTheme.railBackground(model.selectedTheme))
+    }
+}
+
+struct RailIconButton: View {
+    @EnvironmentObject private var model: AppModel
+    let icon: String
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(AppTheme.icon(model.selectedTheme))
+                .frame(width: 38, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help(help)
     }
 }
 
@@ -322,6 +331,7 @@ struct RailButton: View {
     var body: some View {
         Button { model.sidebarMode = mode } label: {
             Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(model.sidebarMode == mode ? AppTheme.activeIcon(model.selectedTheme) : AppTheme.icon(model.selectedTheme))
                 .frame(width: 38, height: 38)
                 .background(model.sidebarMode == mode ? AppTheme.activeControlBackground(model.selectedTheme) : Color.clear)
@@ -329,6 +339,7 @@ struct RailButton: View {
                 .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
+        .focusable(false)
     }
 }
 
@@ -391,14 +402,14 @@ enum AppTheme {
     static func activeIcon(_ theme: String) -> Color {
         switch theme {
         case "Graphite", "Midnight": return Color(red: 0.73, green: 0.86, blue: 1.0)
-        default: return Color.accentColor
+        default: return Color(red: 0.42, green: 0.34, blue: 0.24)
         }
     }
 
     static func activeControlBackground(_ theme: String) -> Color {
         switch theme {
         case "Graphite", "Midnight": return Color.white.opacity(0.12)
-        default: return Color.accentColor.opacity(0.16)
+        default: return Color(red: 0.42, green: 0.34, blue: 0.24).opacity(0.11)
         }
     }
 
@@ -489,6 +500,12 @@ struct LibraryPaneView: View {
                 Label("Add Folder", systemImage: "plus")
                     .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.activeIcon(model.selectedTheme))
+            .padding(.vertical, 6)
+            .background(AppTheme.controlBackground(model.selectedTheme).opacity(0.72))
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .help("Add folder to library (⇧⌘O)")
         }
     }
 }
@@ -990,7 +1007,7 @@ struct ToolbarTabStripView: View {
                     }
                     .padding(.vertical, 2)
                 }
-                .frame(maxWidth: .infinity, maxHeight: 30)
+                .frame(maxWidth: .infinity, maxHeight: 28)
             }
         }
     }
@@ -1001,7 +1018,7 @@ struct ToolbarTabChip: View {
     let tab: ReaderTab
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             Button { model.activateTab(tab.id) } label: {
                 HStack(spacing: 5) {
                     if model.isPinned(tab.file) {
@@ -1027,12 +1044,12 @@ struct ToolbarTabChip: View {
             .foregroundStyle(AppTheme.icon(model.selectedTheme).opacity(0.72))
             .help("Close tab")
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .background(model.activeTabID == tab.id ? AppTheme.activeControlBackground(model.selectedTheme) : AppTheme.controlBackground(model.selectedTheme).opacity(0.72))
-        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(model.activeTabID == tab.id ? AppTheme.activeControlBackground(model.selectedTheme) : AppTheme.controlBackground(model.selectedTheme).opacity(0.45))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay {
-            RoundedRectangle(cornerRadius: 7)
+            RoundedRectangle(cornerRadius: 6)
                 .stroke(AppTheme.secondaryText(model.selectedTheme).opacity(model.activeTabID == tab.id ? 0.22 : 0.10), lineWidth: 1)
         }
         .help(tab.file.url.path)
