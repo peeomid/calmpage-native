@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CalmPage TOC Options</title>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --paper: #fffaf0;
+    --ink: #1f1b16;
+    --muted: #7a7167;
+    --line: #ded6c8;
+    --accent: #0a84ff;
+    --chrome: #ece7df;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    background: #ded8cd;
+    color: var(--ink);
+    padding: 28px;
+  }
+  h1 { font-size: 24px; margin: 0 0 18px; font-weight: 650; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .option { background: #f7f4ee; border: 1px solid #cbc3b7; border-radius: 14px; padding: 16px; }
+  .label { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+  .label h2 { font-size: 17px; margin: 0; }
+  .label span { color: var(--muted); font-size: 12px; }
+  .window { height: 560px; border-radius: 12px; overflow: hidden; border: 1px solid #bfb7ac; background: var(--paper); box-shadow: 0 14px 34px rgba(40,31,20,.14); position: relative; }
+  .titlebar { height: 38px; background: var(--chrome); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; padding: 0 12px; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; }
+  .dot:nth-child(2) { background: #ffbd2e; }
+  .dot:nth-child(3) { background: #28c840; }
+  .tool { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .icon { width: 28px; height: 24px; border-radius: 7px; border: 1px solid #d2cabe; background: #faf8f4; display: grid; place-items: center; color: #595149; font-size: 13px; }
+  .activeIcon { color: white; background: var(--accent); border-color: var(--accent); }
+  .body { display: grid; grid-template-columns: 188px 1fr; height: calc(100% - 38px); }
+  .side { border-right: 1px solid var(--line); background: #f1ece4; padding: 14px 10px; }
+  .row { height: 28px; border-radius: 7px; margin-bottom: 6px; background: rgba(0,0,0,.045); }
+  .row:nth-child(2) { background: rgba(10,132,255,.13); }
+  .reader { position: relative; padding: 42px 64px; overflow: hidden; }
+  .reader h3 { font-family: Georgia, serif; font-size: 30px; margin: 0 0 24px; font-weight: 500; }
+  .reader p { font-family: Georgia, serif; font-size: 17px; line-height: 1.72; color: #342d25; margin: 0 0 16px; max-width: 560px; }
+  .popover { position: absolute; top: 50px; right: 48px; width: 306px; height: 380px; border-radius: 13px; border: 1px solid #c9c1b5; background: rgba(255,252,246,.96); box-shadow: 0 18px 44px rgba(44,35,24,.22); padding: 14px; }
+  .tocTitle { font-size: 15px; font-weight: 650; margin-bottom: 12px; display: flex; justify-content: space-between; }
+  .tocItem { display: flex; gap: 9px; align-items: start; min-height: 30px; padding: 6px 7px; border-radius: 7px; color: var(--muted); font-size: 13px; }
+  .tocItem.active { color: var(--ink); background: rgba(10,132,255,.09); font-weight: 600; }
+  .bar { width: 2px; min-height: 20px; background: transparent; border-radius: 2px; }
+  .tocItem.active .bar { background: var(--accent); }
+  .rail { position: absolute; top: 78px; right: 0; width: 34px; height: 330px; display: flex; align-items: stretch; justify-content: center; }
+  .railLine { width: 3px; background: #ddd3c5; border-radius: 3px; position: relative; }
+  .mark { position: absolute; left: -3px; width: 9px; height: 3px; border-radius: 2px; background: #9f968b; }
+  .mark.active { left: -5px; width: 13px; background: var(--accent); }
+  .bubble { position: absolute; right: 26px; top: 132px; width: 178px; padding: 8px 10px; border-radius: 9px; border: 1px solid #d2cabe; background: rgba(255,252,246,.94); box-shadow: 0 8px 24px rgba(44,35,24,.16); font-size: 12px; color: #4c443b; }
+  .expandedRail { position: absolute; top: 62px; right: 28px; width: 256px; height: 360px; border-radius: 13px; border: 1px solid #c9c1b5; background: rgba(255,252,246,.96); box-shadow: 0 18px 44px rgba(44,35,24,.18); padding: 14px; opacity: .16; transform: translateX(18px); }
+  .note { margin-top: 12px; color: #5f554b; font-size: 13px; line-height: 1.45; }
+</style>
+</head>
+<body>
+  <h1>CalmPage TOC: two better directions</h1>
+  <div class="grid">
+    <section class="option">
+      <div class="label"><h2>A. Floating Contents Popover</h2><span>best simple choice</span></div>
+      <div class="window">
+        <div class="titlebar"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="tool"><div class="icon">⌘</div><div class="icon activeIcon">☰</div><div class="icon">Aa</div></div></div>
+        <div class="body"><aside class="side"><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div></aside><main class="reader"><h3>The Shape of Quiet Tools</h3><p>A reader should keep the document in front. Controls stay close, but they do not compete with text.</p><p>For long notes, the outline appears only when needed. It floats above the page and disappears again.</p><div class="popover"><div class="tocTitle">Contents <span>⌘/</span></div><div class="tocItem"><div class="bar"></div><div>Introduction</div></div><div class="tocItem active"><div class="bar"></div><div>The Shape of Quiet Tools</div></div><div class="tocItem"><div class="bar"></div><div style="padding-left:14px">Reading flow</div></div><div class="tocItem"><div class="bar"></div><div>Navigation</div></div><div class="tocItem"><div class="bar"></div><div>References</div></div><div class="tocItem"><div class="bar"></div><div>Appendix</div></div></div></main></div>
+      </div>
+      <div class="note">Click a toolbar icon, see full heading list, click heading to jump. Clean, easy, normal macOS behavior.</div>
+    </section>
+
+    <section class="option">
+      <div class="label"><h2>B. Right-edge Outline Rail</h2><span>more subtle, more custom</span></div>
+      <div class="window">
+        <div class="titlebar"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="tool"><div class="icon">⌘</div><div class="icon">☰</div><div class="icon">Aa</div></div></div>
+        <div class="body"><aside class="side"><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div></aside><main class="reader"><h3>The Shape of Quiet Tools</h3><p>A rail is always near the reading edge, but almost invisible. It shows where you are in the document.</p><p>Hover or click expands it into the full outline. This feels premium, but needs more detail work.</p><div class="rail"><div class="railLine"><div class="mark" style="top:20px"></div><div class="mark active" style="top:96px"></div><div class="mark" style="top:156px"></div><div class="mark" style="top:230px"></div><div class="mark" style="top:292px"></div></div></div><div class="bubble">Current section<br><strong>The Shape of Quiet Tools</strong></div><div class="expandedRail"><div class="tocTitle">Contents</div><div class="tocItem active"><div class="bar"></div><div>The Shape of Quiet Tools</div></div><div class="tocItem"><div class="bar"></div><div>Reading flow</div></div><div class="tocItem"><div class="bar"></div><div>Navigation</div></div></div></main></div>
+      </div>
+      <div class="note">Tiny visual map on the right edge. Hover/click expands. Very calm, but less obvious for first-time users.</div>
+    </section>
+  </div>
+</body>
+</html>

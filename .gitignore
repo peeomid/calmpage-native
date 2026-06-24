@@ -1,0 +1,5 @@
+core/target/
+App/.build/
+App/:memory:
+build/
+.DS_Store
