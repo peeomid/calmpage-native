@@ -293,7 +293,7 @@ struct LeftSidebarView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.top, 56)
+            .padding(.top, 18)
             .padding(.bottom, 14)
             .background(AppTheme.sidebarBackground(model.selectedTheme))
         }
@@ -306,7 +306,7 @@ struct SidebarRailView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Spacer().frame(height: 44)
+            Spacer().frame(height: 12)
             RailIconButton(icon: "sidebar.left", help: "Toggle sidebar (⌘B)") { model.sidebarCollapsed.toggle() }
             RailButton(mode: .library, icon: "folder")
             RailButton(mode: .workspaces, icon: "square.grid.2x2")
@@ -867,10 +867,6 @@ struct ReaderColumnView: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 0) {
-                if !model.focusMode {
-                    Color.clear.frame(height: 34)
-                    Divider()
-                }
                 ReaderView()
             }
             if model.documentFindOpen {
