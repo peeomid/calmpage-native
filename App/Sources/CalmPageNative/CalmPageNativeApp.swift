@@ -6,6 +6,7 @@ private enum ShellMetrics {
     static let titlebarRailWidth: CGFloat = 60
     static let sidebarWidth: CGFloat = 268
     static let titlebarHeight: CGFloat = 44
+    static let breadcrumbHeight: CGFloat = 26
     static let titlebarCornerBleed: CGFloat = 8
     static let sidebarTopInset: CGFloat = 14
 }
@@ -87,6 +88,14 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .ignoresSafeArea(.container, edges: .top)
                     .zIndex(6)
+                if let tab = model.activeTab {
+                    ReaderBreadcrumbBar(file: tab.file)
+                        .padding(.top, ShellMetrics.titlebarHeight)
+                        .padding(.leading, model.sidebarCollapsed ? 0 : model.sidebarWidth)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .ignoresSafeArea(.container, edges: .top)
+                        .zIndex(5.8)
+                }
             }
             if !model.workspaceRefreshMessage.isEmpty || model.readmdSettings.status != .ready {
                 AppStatusToast()
@@ -541,6 +550,56 @@ enum AppTheme {
         default: return Color(nsColor: .controlBackgroundColor)
         }
     }
+
+    static func tabStripBackground(_ theme: String) -> Color {
+        switch theme {
+        case "Graphite": return Color(red: 0.15, green: 0.145, blue: 0.13)
+        case "Midnight": return Color(red: 0.10, green: 0.13, blue: 0.16)
+        case "Sepia": return Color(red: 0.89, green: 0.82, blue: 0.70)
+        case "Paper": return Color(red: 0.94, green: 0.89, blue: 0.78)
+        default: return Color(red: 0.94, green: 0.94, blue: 0.90)
+        }
+    }
+
+    static func activeTabBackground(_ theme: String) -> Color {
+        switch theme {
+        case "Graphite": return Color(red: 0.27, green: 0.26, blue: 0.23)
+        case "Midnight": return Color(red: 0.21, green: 0.26, blue: 0.31)
+        case "Sepia": return Color(red: 0.98, green: 0.91, blue: 0.78)
+        case "Paper": return Color(red: 1.0, green: 0.96, blue: 0.84)
+        default: return Color(red: 1.0, green: 0.995, blue: 0.965)
+        }
+    }
+
+    static func inactiveTabBackground(_ theme: String) -> Color {
+        switch theme {
+        case "Graphite", "Midnight": return Color.white.opacity(0.09)
+        case "Sepia": return Color(red: 0.84, green: 0.76, blue: 0.64)
+        case "Paper": return Color(red: 0.90, green: 0.84, blue: 0.72)
+        default: return Color(red: 0.86, green: 0.87, blue: 0.83)
+        }
+    }
+
+    static func tabBorder(_ theme: String) -> Color {
+        switch theme {
+        case "Graphite", "Midnight": return Color.white.opacity(0.18)
+        default: return Color(red: 0.68, green: 0.68, blue: 0.62)
+        }
+    }
+
+    static func breadcrumbBackground(_ theme: String) -> Color {
+        switch theme {
+        case "Graphite", "Midnight": return tabStripBackground(theme).opacity(0.96)
+        default: return tabStripBackground(theme).opacity(0.88)
+        }
+    }
+
+    static func breadcrumbSeparator(_ theme: String) -> Color {
+        switch theme {
+        case "Graphite", "Midnight": return Color.white.opacity(0.32)
+        default: return Color(red: 0.42, green: 0.39, blue: 0.33).opacity(0.45)
+        }
+    }
 }
 
 struct SidebarHeaderView: View {
@@ -964,13 +1023,13 @@ struct ReaderColumnView: View {
             }
             if model.documentFindOpen {
                 DocumentFindBar()
-                    .padding(.top, model.focusMode ? 18 : 60)
+                    .padding(.top, model.focusMode ? 18 : 60 + ShellMetrics.breadcrumbHeight)
                     .padding(.trailing, 28)
                     .zIndex(12)
             }
             if model.contentsOpen {
                 FloatingContentsView()
-                    .padding(.top, model.documentFindOpen ? (model.focusMode ? 68 : 110) : (model.focusMode ? 18 : 60))
+                    .padding(.top, model.documentFindOpen ? (model.focusMode ? 68 : 110 + ShellMetrics.breadcrumbHeight) : (model.focusMode ? 18 : 60 + ShellMetrics.breadcrumbHeight))
                     .padding(.trailing, 28)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                     .zIndex(10)
@@ -996,40 +1055,55 @@ struct ReaderTopTabBarView: View {
             }
             ToolbarTabStripView()
                 .frame(maxWidth: .infinity)
-            if let tab = model.activeTab {
-                ActivePathButton(file: tab.file)
-            }
         }
         .buttonStyle(.borderless)
         .foregroundStyle(AppTheme.icon(model.selectedTheme))
         .controlSize(.small)
         .padding(.horizontal, 12)
         .frame(height: ShellMetrics.titlebarHeight)
-        .background(AppTheme.windowBackground(model.selectedTheme))
+        .background(AppTheme.tabStripBackground(model.selectedTheme))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppTheme.tabBorder(model.selectedTheme).opacity(0.75))
+                .frame(height: 1)
+        }
     }
 }
 
-struct ActivePathButton: View {
+struct ReaderBreadcrumbBar: View {
     @EnvironmentObject private var model: AppModel
     @State private var pathOpen = false
     let file: MarkdownFile
 
     var body: some View {
-        Button { pathOpen.toggle() } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "folder")
-                    .font(.system(size: 11, weight: .medium))
-                Text(displayPath)
-                    .font(.system(size: 11, weight: .regular))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+        HStack(spacing: 4) {
+            ForEach(Array(pathParts.enumerated()), id: \.offset) { index, part in
+                if index > 0 {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(AppTheme.breadcrumbSeparator(model.selectedTheme))
+                }
+                Button { pathOpen.toggle() } label: {
+                    Text(part)
+                        .font(.system(size: 11, weight: index == pathParts.count - 1 ? .semibold : .regular))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(index == pathParts.count - 1 ? AppTheme.primaryText(model.selectedTheme).opacity(0.78) : AppTheme.secondaryText(model.selectedTheme))
+                }
+                .buttonStyle(.plain)
             }
-            .foregroundStyle(AppTheme.secondaryText(model.selectedTheme).opacity(0.86))
-            .padding(.horizontal, 8)
-            .frame(width: 220, height: 24, alignment: .leading)
-            .contentShape(RoundedRectangle(cornerRadius: 6))
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, minHeight: ShellMetrics.breadcrumbHeight, maxHeight: ShellMetrics.breadcrumbHeight, alignment: .leading)
+        .background(AppTheme.breadcrumbBackground(model.selectedTheme))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppTheme.tabBorder(model.selectedTheme).opacity(0.85))
+                .frame(height: 1)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { pathOpen.toggle() }
         .focusable(false)
         .help(file.url.path)
         .popover(isPresented: $pathOpen, arrowEdge: .top) {
@@ -1038,10 +1112,10 @@ struct ActivePathButton: View {
         }
     }
 
-    private var displayPath: String {
+    private var pathParts: [String] {
         let parts = file.relativePath.split(separator: "/").map(String.init)
-        guard parts.count > 2 else { return file.relativePath }
-        return "\(parts[0]) / ... / \(parts.last ?? file.title)"
+        guard parts.count > 4 else { return parts }
+        return [parts[0], "...", parts[parts.count - 2], parts[parts.count - 1]]
     }
 }
 
@@ -1212,6 +1286,8 @@ struct ToolbarTabChip: View {
     @EnvironmentObject private var model: AppModel
     let tab: ReaderTab
 
+    private var isActive: Bool { model.activeTabID == tab.id }
+
     var body: some View {
         HStack(spacing: 4) {
             Button { model.activateTab(tab.id) } label: {
@@ -1222,14 +1298,14 @@ struct ToolbarTabChip: View {
                             .foregroundStyle(.orange)
                     }
                     Text(tab.file.title)
-                        .font(.system(size: 12, weight: model.activeTabID == tab.id ? .semibold : .regular))
+                        .font(.system(size: 12, weight: isActive ? .semibold : .medium))
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .frame(maxWidth: 190)
                 }
             }
             .buttonStyle(.plain)
-            .foregroundStyle(model.activeTabID == tab.id ? AppTheme.primaryText(model.selectedTheme) : AppTheme.secondaryText(model.selectedTheme))
+            .foregroundStyle(isActive ? AppTheme.primaryText(model.selectedTheme) : AppTheme.secondaryText(model.selectedTheme).opacity(0.92))
 
             Button { model.closeTab(tab) } label: {
                 Image(systemName: "xmark")
@@ -1241,11 +1317,20 @@ struct ToolbarTabChip: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(model.activeTabID == tab.id ? AppTheme.activeControlBackground(model.selectedTheme) : AppTheme.controlBackground(model.selectedTheme).opacity(0.45))
+        .background(isActive ? AppTheme.activeTabBackground(model.selectedTheme) : AppTheme.inactiveTabBackground(model.selectedTheme))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay {
             RoundedRectangle(cornerRadius: 6)
-                .stroke(AppTheme.secondaryText(model.selectedTheme).opacity(model.activeTabID == tab.id ? 0.22 : 0.10), lineWidth: 1)
+                .stroke(AppTheme.tabBorder(model.selectedTheme).opacity(isActive ? 0.95 : 0.58), lineWidth: 1)
+        }
+        .overlay(alignment: .top) {
+            if isActive {
+                Rectangle()
+                    .fill(Color.orange.opacity(0.78))
+                    .frame(height: 2)
+                    .clipShape(RoundedRectangle(cornerRadius: 2))
+                    .padding(.horizontal, 7)
+            }
         }
         .help(tab.file.url.path)
         .contextMenu { FileContextMenu(file: tab.file) }
