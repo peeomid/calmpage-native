@@ -98,6 +98,7 @@ struct ContentView: View {
         }
         .background(AppTheme.windowBackground(model.selectedTheme))
         .background(WindowAppearanceSetter(theme: model.selectedTheme))
+        .toolbarBackground(.hidden, for: .windowToolbar)
         .background(AppKeyHandlingView(
             closeTab: { model.closeActiveTab() },
             findDocument: { model.openDocumentFind() },
@@ -297,6 +298,11 @@ struct LeftSidebarView: View {
             .padding(.top, 8)
             .padding(.bottom, 14)
             .background(AppTheme.sidebarBackground(model.selectedTheme))
+            .overlay(alignment: .trailing) {
+                Rectangle()
+                    .fill(AppTheme.sidebarBorder(model.selectedTheme))
+                    .frame(width: 1)
+            }
         }
         .background(AppTheme.sidebarBackground(model.selectedTheme))
     }
@@ -411,7 +417,7 @@ enum AppTheme {
         case "Midnight": return Color(red: 0.15, green: 0.18, blue: 0.21)
         case "Sepia": return Color(red: 0.91, green: 0.84, blue: 0.72)
         case "Paper": return Color(red: 0.96, green: 0.92, blue: 0.82)
-        default: return Color(red: 0.925, green: 0.932, blue: 0.922)
+        default: return Color(red: 0.905, green: 0.918, blue: 0.902)
         }
     }
 
@@ -421,7 +427,14 @@ enum AppTheme {
         case "Midnight": return Color(red: 0.12, green: 0.15, blue: 0.18)
         case "Sepia": return Color(red: 0.86, green: 0.78, blue: 0.66)
         case "Paper": return Color(red: 0.92, green: 0.86, blue: 0.74)
-        default: return Color(red: 0.875, green: 0.895, blue: 0.875)
+        default: return Color(red: 0.845, green: 0.87, blue: 0.84)
+        }
+    }
+
+    static func sidebarBorder(_ theme: String) -> Color {
+        switch theme {
+        case "Graphite", "Midnight": return Color.white.opacity(0.12)
+        default: return Color(red: 0.62, green: 0.66, blue: 0.61).opacity(0.55)
         }
     }
 
