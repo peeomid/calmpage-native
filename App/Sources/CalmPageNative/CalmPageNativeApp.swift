@@ -7,6 +7,7 @@ private enum ShellMetrics {
     static let sidebarWidth: CGFloat = 268
     static let titlebarHeight: CGFloat = 44
     static let titlebarCornerBleed: CGFloat = 8
+    static let sidebarTopInset: CGFloat = 14
 }
 
 @main
@@ -308,7 +309,7 @@ struct LeftSidebarView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.top, 54)
+            .padding(.top, ShellMetrics.sidebarTopInset)
             .padding(.bottom, 14)
             .background(AppTheme.sidebarBackground(model.selectedTheme))
             .overlay(alignment: .trailing) {
@@ -326,7 +327,7 @@ struct SidebarRailView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Spacer().frame(height: 54)
+            Spacer().frame(height: ShellMetrics.sidebarTopInset)
             RailButton(mode: .library, icon: "folder")
             RailButton(mode: .workspaces, icon: "square.grid.2x2")
             RailButton(mode: .pins, icon: "pin")
