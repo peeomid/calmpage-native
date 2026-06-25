@@ -996,6 +996,9 @@ struct ReaderTopTabBarView: View {
             }
             ToolbarTabStripView()
                 .frame(maxWidth: .infinity)
+            if let tab = model.activeTab {
+                ActivePathButton(file: tab.file)
+            }
         }
         .buttonStyle(.borderless)
         .foregroundStyle(AppTheme.icon(model.selectedTheme))
@@ -1003,6 +1006,78 @@ struct ReaderTopTabBarView: View {
         .padding(.horizontal, 12)
         .frame(height: ShellMetrics.titlebarHeight)
         .background(AppTheme.windowBackground(model.selectedTheme))
+    }
+}
+
+struct ActivePathButton: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var pathOpen = false
+    let file: MarkdownFile
+
+    var body: some View {
+        Button { pathOpen.toggle() } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "folder")
+                    .font(.system(size: 11, weight: .medium))
+                Text(displayPath)
+                    .font(.system(size: 11, weight: .regular))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .foregroundStyle(AppTheme.secondaryText(model.selectedTheme).opacity(0.86))
+            .padding(.horizontal, 8)
+            .frame(width: 220, height: 24, alignment: .leading)
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help(file.url.path)
+        .popover(isPresented: $pathOpen, arrowEdge: .top) {
+            ActivePathPopover(file: file)
+                .environmentObject(model)
+        }
+    }
+
+    private var displayPath: String {
+        let parts = file.relativePath.split(separator: "/").map(String.init)
+        guard parts.count > 2 else { return file.relativePath }
+        return "\(parts[0]) / ... / \(parts.last ?? file.title)"
+    }
+}
+
+struct ActivePathPopover: View {
+    @EnvironmentObject private var model: AppModel
+    let file: MarkdownFile
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(file.title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(AppTheme.primaryText(model.selectedTheme))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Text(file.relativePath)
+                .font(.system(size: 11))
+                .foregroundStyle(AppTheme.secondaryText(model.selectedTheme))
+                .lineLimit(3)
+                .textSelection(.enabled)
+            Divider()
+            HStack(spacing: 8) {
+                Button("Copy Relative") { copy(file.relativePath) }
+                Button("Copy Full") { copy(file.url.path) }
+                Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([file.url]) }
+            }
+            .buttonStyle(.borderless)
+            .font(.system(size: 12))
+        }
+        .padding(12)
+        .frame(width: 360, alignment: .leading)
+        .background(AppTheme.windowBackground(model.selectedTheme))
+    }
+
+    private func copy(_ value: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
     }
 }
 
