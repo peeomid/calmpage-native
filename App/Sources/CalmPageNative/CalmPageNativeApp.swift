@@ -963,7 +963,7 @@ struct ReaderTopTabBarView: View {
         .foregroundStyle(AppTheme.icon(model.selectedTheme))
         .controlSize(.small)
         .padding(.horizontal, 12)
-        .frame(height: 34)
+        .frame(height: ShellMetrics.titlebarHeight)
         .background(AppTheme.windowBackground(model.selectedTheme))
     }
 }
