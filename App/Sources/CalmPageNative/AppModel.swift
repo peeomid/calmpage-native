@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 import SwiftUI
 
@@ -61,6 +62,8 @@ final class AppModel: ObservableObject {
     private var paletteTask: Task<Void, Never>?
     private var pathLookupTask: Task<Void, Never>?
     private var workspaceMessageTask: Task<Void, Never>?
+    private var activeFileWatcher: ActiveFileWatcher?
+    private var activeFileRefreshTask: Task<Void, Never>?
 
     init(stateStore: AppStateStore = .live, libraryStore: LibraryStore? = nil, renderer: ReadmdRenderer = ReadmdRenderer(), restoreSavedState: Bool = true) {
         self.stateStore = stateStore
@@ -405,7 +408,7 @@ final class AppModel: ObservableObject {
             if activeTabID == tabID {
                 if changed {
                     saveState()
-                    loadActiveTab()
+                    refreshActiveFileFromDisk(showLoading: false, showUpdatedMessage: true)
                 }
                 return
             }
@@ -462,7 +465,10 @@ final class AppModel: ObservableObject {
             activeTabID = tabs.last?.id
             loadActiveTab()
         }
-        if tabs.isEmpty { readerState = .empty }
+        if tabs.isEmpty {
+            readerState = .empty
+            stopActiveFileWatcher()
+        }
         saveState()
     }
 
@@ -470,6 +476,7 @@ final class AppModel: ObservableObject {
         tabs = []
         activeTabID = nil
         readerState = .empty
+        stopActiveFileWatcher()
         saveState()
     }
 
@@ -481,8 +488,10 @@ final class AppModel: ObservableObject {
     func loadActiveTab() {
         guard let activeTab else {
             readerState = .empty
+            stopActiveFileWatcher()
             return
         }
+        watchActiveFile(activeTab.file)
         readerState = .loading(activeTab.file.title)
         Task {
             let result = await renderer.render(file: activeTab.file, theme: selectedTheme, style: selectedReadmdStyle, fontSize: fontSize, contentWidth: contentWidth, readmdPath: readmdSettings.resolvedPath)
@@ -492,6 +501,56 @@ final class AppModel: ObservableObject {
                     self.activeHeadingID = note.headings.first?.id
                     self.refreshPaletteItems()
                 }
+            }
+        }
+    }
+
+    private func refreshActiveFileFromDisk(showLoading: Bool, showUpdatedMessage: Bool = false) {
+        guard let activeTab, let index = tabs.firstIndex(where: { $0.id == activeTab.id }) else { return }
+        let latestFile = refreshedFileMetadata(activeTab.file)
+        let changed = latestFile.sizeBytes != activeTab.file.sizeBytes || latestFile.modifiedAt != activeTab.file.modifiedAt
+        if changed {
+            tabs[index] = ReaderTab(id: activeTab.id, file: latestFile)
+            saveState()
+        }
+        let fileToRender = changed ? latestFile : activeTab.file
+        if showLoading { readerState = .loading(fileToRender.title) }
+        Task {
+            let result = await renderer.render(file: fileToRender, theme: selectedTheme, style: selectedReadmdStyle, fontSize: fontSize, contentWidth: contentWidth, readmdPath: readmdSettings.resolvedPath)
+            if self.activeTabID == activeTab.id {
+                self.readerState = result
+                if case .loaded(let note) = result {
+                    self.activeHeadingID = note.headings.first?.id
+                    self.refreshPaletteItems()
+                }
+                if showUpdatedMessage { self.setWorkspaceRefreshMessage("Updated from disk") }
+            }
+        }
+    }
+
+    private func watchActiveFile(_ file: MarkdownFile) {
+        guard activeFileWatcher?.path != file.url.path else { return }
+        activeFileRefreshTask?.cancel()
+        activeFileWatcher = ActiveFileWatcher(url: file.url) { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.scheduleActiveFileRefresh()
+            }
+        }
+    }
+
+    private func stopActiveFileWatcher() {
+        activeFileRefreshTask?.cancel()
+        activeFileRefreshTask = nil
+        activeFileWatcher = nil
+    }
+
+    private func scheduleActiveFileRefresh() {
+        activeFileRefreshTask?.cancel()
+        activeFileRefreshTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.refreshActiveFileFromDisk(showLoading: false, showUpdatedMessage: true)
             }
         }
     }
@@ -1043,6 +1102,32 @@ final class AppModel: ObservableObject {
             }
             self.paletteItemsSnapshot = items
         }
+    }
+}
+
+final class ActiveFileWatcher {
+    let path: String
+    private let descriptor: CInt
+    private let source: DispatchSourceFileSystemObject
+
+    init?(url: URL, onChange: @escaping () -> Void) {
+        let path = url.path
+        let descriptor = open(path, O_EVTONLY)
+        guard descriptor >= 0 else { return nil }
+        self.path = path
+        self.descriptor = descriptor
+        source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: descriptor,
+            eventMask: [.write, .delete, .rename, .extend, .attrib],
+            queue: DispatchQueue.global(qos: .utility)
+        )
+        source.setEventHandler(handler: onChange)
+        source.setCancelHandler { close(descriptor) }
+        source.resume()
+    }
+
+    deinit {
+        source.cancel()
     }
 }
 

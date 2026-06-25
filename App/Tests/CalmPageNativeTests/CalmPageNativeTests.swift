@@ -525,6 +525,23 @@ final class CalmPageNativeTests: XCTestCase {
     }
 
     @MainActor
+    func testAppModelAutoRefreshesActiveFileWhenDiskContentChanges() async throws {
+        let root = try makeTempVault()
+        let url = root.appendingPathComponent("watched.md")
+        try "# First".write(to: url, atomically: true, encoding: .utf8)
+        let model = makeModel(cacheDirectory: root.appendingPathComponent("cache"))
+        let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        let file = MarkdownFile(id: url.path, url: url, relativePath: "watched.md", title: "Watched", sizeBytes: Int64(values.fileSize ?? 0), modifiedAt: values.contentModificationDate ?? .distantPast)
+
+        model.openFile(file)
+        try await waitForLoadedNote(in: model, title: "First")
+        try "# Watched update".write(to: url, atomically: true, encoding: .utf8)
+
+        try await waitForLoadedNote(in: model, title: "Watched update", attempts: 120)
+        XCTAssertEqual(model.workspaceRefreshMessage, "Updated from disk")
+    }
+
+    @MainActor
     func testAppModelCloseAllTabsReleasesLoadedNote() async throws {
         let root = try makeTempVault()
         let url = root.appendingPathComponent("note.md")
@@ -701,8 +718,8 @@ final class CalmPageNativeTests: XCTestCase {
     }
 
     @MainActor
-    private func waitForLoadedNote(in model: AppModel, title: String) async throws {
-        for _ in 0..<50 {
+    private func waitForLoadedNote(in model: AppModel, title: String, attempts: Int = 50) async throws {
+        for _ in 0..<attempts {
             if model.activeNote?.title == title { return }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
