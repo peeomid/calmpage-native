@@ -489,6 +489,42 @@ final class CalmPageNativeTests: XCTestCase {
     }
 
     @MainActor
+    func testAppModelClickingActiveTabDoesNotReload() async throws {
+        let root = try makeTempVault()
+        let url = root.appendingPathComponent("note.md")
+        try "# Note".write(to: url, atomically: true, encoding: .utf8)
+        let model = makeModel(cacheDirectory: root.appendingPathComponent("cache"))
+        let file = MarkdownFile(id: url.path, url: url, relativePath: "note.md", title: "Note", sizeBytes: 6, modifiedAt: .now)
+
+        model.openFile(file)
+        try await waitForLoadedNote(in: model, title: "Note")
+        let loadedState = model.readerState
+
+        model.activateTab(file.id)
+
+        XCTAssertEqual(model.readerState, loadedState)
+    }
+
+    @MainActor
+    func testAppModelReopeningActiveFileRefreshesChangedContent() async throws {
+        let root = try makeTempVault()
+        let url = root.appendingPathComponent("note.md")
+        try "# First".write(to: url, atomically: true, encoding: .utf8)
+        let model = makeModel(cacheDirectory: root.appendingPathComponent("cache"))
+        let file = MarkdownFile(id: url.path, url: url, relativePath: "note.md", title: "Note", sizeBytes: 7, modifiedAt: Date(timeIntervalSince1970: 10))
+
+        model.openFile(file)
+        try await waitForLoadedNote(in: model, title: "First")
+        try "# Second title".write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 20)], ofItemAtPath: url.path)
+
+        model.openFile(file)
+
+        try await waitForLoadedNote(in: model, title: "Second title")
+        XCTAssertEqual(model.tabs.first?.file.sizeBytes, 14)
+    }
+
+    @MainActor
     func testAppModelCloseAllTabsReleasesLoadedNote() async throws {
         let root = try makeTempVault()
         let url = root.appendingPathComponent("note.md")

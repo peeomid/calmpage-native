@@ -397,11 +397,22 @@ final class AppModel: ObservableObject {
 
     func openFile(_ file: MarkdownFile) {
         let tabID = file.id
-        if tabs.contains(where: { $0.id == tabID }) {
+        let latestFile = refreshedFileMetadata(file)
+        if let index = tabs.firstIndex(where: { $0.id == tabID }) {
+            let previousFile = tabs[index].file
+            let changed = previousFile.sizeBytes != latestFile.sizeBytes || previousFile.modifiedAt != latestFile.modifiedAt
+            tabs[index] = ReaderTab(id: tabID, file: latestFile)
+            if activeTabID == tabID {
+                if changed {
+                    saveState()
+                    loadActiveTab()
+                }
+                return
+            }
             activateTab(tabID)
             return
         }
-        let tab = ReaderTab(id: tabID, file: file)
+        let tab = ReaderTab(id: tabID, file: latestFile)
         tabs.append(tab)
         activeTabID = tab.id
         saveState()
@@ -410,9 +421,22 @@ final class AppModel: ObservableObject {
 
     func activateTab(_ tabID: String) {
         guard tabs.contains(where: { $0.id == tabID }) else { return }
+        guard activeTabID != tabID else { return }
         activeTabID = tabID
         saveState()
         loadActiveTab()
+    }
+
+    private func refreshedFileMetadata(_ file: MarkdownFile) -> MarkdownFile {
+        guard let values = try? file.url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]) else { return file }
+        return MarkdownFile(
+            id: file.id,
+            url: file.url,
+            relativePath: file.relativePath,
+            title: file.title,
+            sizeBytes: Int64(values.fileSize ?? Int(file.sizeBytes)),
+            modifiedAt: values.contentModificationDate ?? file.modifiedAt
+        )
     }
 
     func activateNextTab() {
