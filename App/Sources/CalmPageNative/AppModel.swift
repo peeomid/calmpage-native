@@ -10,6 +10,7 @@ final class AppModel: ObservableObject {
     @Published var activeTabID: String?
     @Published var readerState: ReaderState = .empty
     @Published var sidebarMode: SidebarMode = .library
+    @Published var sidebarWidth: CGFloat = 268
     @Published var sidebarCollapsed = false
     @Published var inspectorVisible = false
     @Published var focusMode = false

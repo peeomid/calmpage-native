@@ -76,13 +76,14 @@ struct ContentView: View {
                 .ignoresSafeArea(.container, edges: .top)
             if !model.sidebarCollapsed && !model.focusMode {
                 SidebarTitlebarOverlay()
+                    .frame(width: model.sidebarWidth, height: ShellMetrics.titlebarHeight)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .ignoresSafeArea(.container, edges: .top)
                     .zIndex(5)
             }
             if !model.focusMode {
                 ReaderTopTabBarView()
-                    .padding(.leading, model.sidebarCollapsed ? 72 : ShellMetrics.sidebarWidth)
+                    .padding(.leading, model.sidebarCollapsed ? 72 : model.sidebarWidth)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .ignoresSafeArea(.container, edges: .top)
                     .zIndex(6)
@@ -157,13 +158,18 @@ struct NativeSplitShell: NSViewControllerRepresentable {
         context.coordinator.sidebarItem = sidebarItem
         context.coordinator.sidebarController = sidebarController
         context.coordinator.readerController = readerController
+        context.coordinator.model = model
+        context.coordinator.installResizeObserver(for: controller.splitView)
+        context.coordinator.updateSidebarWidth(from: controller.splitView)
         return controller
     }
 
     func updateNSViewController(_ controller: NSSplitViewController, context: Context) {
         context.coordinator.sidebarController?.rootView = sidebarView
         context.coordinator.readerController?.rootView = readerView
+        context.coordinator.model = model
         context.coordinator.sidebarItem?.animator().isCollapsed = model.sidebarCollapsed || model.focusMode
+        context.coordinator.updateSidebarWidth(from: controller.splitView)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -176,10 +182,40 @@ struct NativeSplitShell: NSViewControllerRepresentable {
         AnyView(ReaderColumnView().environmentObject(model))
     }
 
-    final class Coordinator {
+    @MainActor
+    final class Coordinator: NSObject {
+        weak var model: AppModel?
         var sidebarItem: NSSplitViewItem?
         var sidebarController: NSHostingController<AnyView>?
         var readerController: NSHostingController<AnyView>?
+        private weak var observedSplitView: NSSplitView?
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        func installResizeObserver(for splitView: NSSplitView) {
+            guard observedSplitView !== splitView else { return }
+            NotificationCenter.default.removeObserver(self, name: NSSplitView.didResizeSubviewsNotification, object: observedSplitView)
+            observedSplitView = splitView
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(splitViewDidResize(_:)),
+                name: NSSplitView.didResizeSubviewsNotification,
+                object: splitView
+            )
+        }
+
+        @objc private func splitViewDidResize(_ notification: Notification) {
+            guard let splitView = notification.object as? NSSplitView else { return }
+            updateSidebarWidth(from: splitView)
+        }
+
+        func updateSidebarWidth(from splitView: NSSplitView) {
+            guard let width = splitView.arrangedSubviews.first?.frame.width, width > 0 else { return }
+            guard model?.sidebarWidth != width else { return }
+            model?.sidebarWidth = width
+        }
     }
 }
 
@@ -373,7 +409,7 @@ struct SidebarTitlebarOverlay: View {
             .padding(.trailing, 12)
             .background(AppTheme.sidebarBackground(model.selectedTheme))
         }
-        .frame(width: ShellMetrics.sidebarWidth, height: ShellMetrics.titlebarHeight)
+        .frame(height: ShellMetrics.titlebarHeight)
         .background(alignment: .leading) {
             AppTheme.railBackground(model.selectedTheme)
                 .frame(width: ShellMetrics.titlebarCornerBleed)
@@ -1070,16 +1106,29 @@ struct ToolbarTabStripView: View {
                     .foregroundStyle(AppTheme.secondaryText(model.selectedTheme))
                     .frame(maxWidth: 520)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(model.tabs) { tab in
-                            ToolbarTabChip(tab: tab)
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(model.tabs) { tab in
+                                ToolbarTabChip(tab: tab)
+                                    .id(tab.id)
+                            }
                         }
+                        .padding(.vertical, 2)
                     }
-                    .padding(.vertical, 2)
+                    .onAppear { scrollActiveTab(proxy) }
+                    .onChange(of: model.activeTabID) { _, _ in scrollActiveTab(proxy) }
+                    .onChange(of: model.tabs.count) { _, _ in scrollActiveTab(proxy) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: 28)
             }
+        }
+    }
+
+    private func scrollActiveTab(_ proxy: ScrollViewProxy) {
+        guard let activeTabID = model.activeTabID else { return }
+        DispatchQueue.main.async {
+            proxy.scrollTo(activeTabID, anchor: .center)
         }
     }
 }
