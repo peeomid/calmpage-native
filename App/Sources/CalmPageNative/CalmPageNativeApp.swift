@@ -1,6 +1,12 @@
 import SwiftUI
 import WebKit
 
+private enum ShellMetrics {
+    static let railWidth: CGFloat = 52
+    static let sidebarWidth: CGFloat = 280
+    static let titlebarHeight: CGFloat = 44
+}
+
 @main
 struct CalmPageNativeApp: App {
     @StateObject private var model = AppModel()
@@ -73,7 +79,7 @@ struct ContentView: View {
             }
             if !model.focusMode {
                 ReaderTopTabBarView()
-                    .padding(.leading, model.sidebarCollapsed ? 72 : 268)
+                    .padding(.leading, model.sidebarCollapsed ? 72 : ShellMetrics.sidebarWidth)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .ignoresSafeArea(.container, edges: .top)
                     .zIndex(6)
@@ -328,7 +334,7 @@ struct SidebarRailView: View {
             RailIconButton(icon: "questionmark.circle", help: "Help") { model.openHelp() }
         }
         .padding(.bottom, 16)
-        .frame(width: 52)
+        .frame(width: ShellMetrics.railWidth)
         .background(AppTheme.railBackground(model.selectedTheme))
     }
 }
@@ -339,7 +345,7 @@ struct SidebarTitlebarOverlay: View {
     var body: some View {
         HStack(spacing: 0) {
             AppTheme.railBackground(model.selectedTheme)
-                .frame(width: 52)
+                .frame(width: ShellMetrics.railWidth)
             HStack(spacing: 10) {
                 Button { model.openFolderPicker(additive: true) } label: {
                     Image(systemName: "folder.badge.plus")
@@ -369,7 +375,7 @@ struct SidebarTitlebarOverlay: View {
                     .frame(width: 1)
             }
         }
-        .frame(width: 268, height: 44)
+        .frame(width: ShellMetrics.sidebarWidth, height: ShellMetrics.titlebarHeight)
     }
 }
 
