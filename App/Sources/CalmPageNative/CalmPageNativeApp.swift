@@ -65,6 +65,12 @@ struct ContentView: View {
         ZStack {
             NativeSplitShell(model: model)
                 .ignoresSafeArea(.container, edges: .top)
+            if !model.sidebarCollapsed && !model.focusMode {
+                SidebarTitlebarOverlay()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .ignoresSafeArea(.container, edges: .top)
+                    .zIndex(5)
+            }
             if !model.focusMode {
                 ReaderTopTabBarView()
                     .padding(.leading, model.sidebarCollapsed ? 72 : 268)
@@ -286,7 +292,6 @@ struct LeftSidebarView: View {
         HStack(spacing: 0) {
             SidebarRailView()
             VStack(alignment: .leading, spacing: 10) {
-                SidebarToolbarView()
                 SidebarHeaderView()
                 switch model.sidebarMode {
                 case .library: LibraryPaneView()
@@ -295,7 +300,7 @@ struct LeftSidebarView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.top, 8)
+            .padding(.top, 54)
             .padding(.bottom, 14)
             .background(AppTheme.sidebarBackground(model.selectedTheme))
             .overlay(alignment: .trailing) {
@@ -328,31 +333,43 @@ struct SidebarRailView: View {
     }
 }
 
-struct SidebarToolbarView: View {
+struct SidebarTitlebarOverlay: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button { model.openFolderPicker(additive: true) } label: {
-                Image(systemName: "folder.badge.plus")
-                    .frame(width: 26, height: 26)
+        HStack(spacing: 0) {
+            AppTheme.railBackground(model.selectedTheme)
+                .frame(width: 52)
+            HStack(spacing: 10) {
+                Button { model.openFolderPicker(additive: true) } label: {
+                    Image(systemName: "folder.badge.plus")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .focusable(false)
+                .foregroundStyle(AppTheme.icon(model.selectedTheme))
+                .help("Add folder (⇧⌘O)")
+                Spacer()
+                Button { model.sidebarCollapsed.toggle() } label: {
+                    Image(systemName: "sidebar.left")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .focusable(false)
+                .foregroundStyle(AppTheme.icon(model.selectedTheme))
+                .help("Toggle sidebar (⌘B)")
             }
-            .buttonStyle(.plain)
-            .focusable(false)
-            .foregroundStyle(AppTheme.icon(model.selectedTheme))
-            .help("Add folder (⇧⌘O)")
-            Spacer()
-            Button { model.sidebarCollapsed.toggle() } label: {
-                Image(systemName: "sidebar.left")
-                    .frame(width: 26, height: 26)
+            .font(.system(size: 14, weight: .medium))
+            .padding(.leading, 70)
+            .padding(.trailing, 12)
+            .background(AppTheme.sidebarBackground(model.selectedTheme))
+            .overlay(alignment: .trailing) {
+                Rectangle()
+                    .fill(AppTheme.sidebarBorder(model.selectedTheme))
+                    .frame(width: 1)
             }
-            .buttonStyle(.plain)
-            .focusable(false)
-            .foregroundStyle(AppTheme.icon(model.selectedTheme))
-            .help("Toggle sidebar (⌘B)")
         }
-        .font(.system(size: 14, weight: .medium))
-        .frame(height: 32)
+        .frame(width: 268, height: 44)
     }
 }
 
