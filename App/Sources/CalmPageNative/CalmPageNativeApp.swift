@@ -6,6 +6,7 @@ private enum ShellMetrics {
     static let titlebarRailWidth: CGFloat = 60
     static let sidebarWidth: CGFloat = 268
     static let titlebarHeight: CGFloat = 44
+    static let titlebarCornerBleed: CGFloat = 8
 }
 
 @main
@@ -200,7 +201,7 @@ struct WindowAppearanceSetter: NSViewRepresentable {
         let appearance = NSAppearance(named: appearanceName)
         NSApplication.shared.appearance = appearance
         window.appearance = appearance
-        window.backgroundColor = NSColor(AppTheme.windowBackground(theme))
+        window.backgroundColor = NSColor(AppTheme.railBackground(theme))
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.styleMask.insert(.fullSizeContentView)
@@ -370,13 +371,13 @@ struct SidebarTitlebarOverlay: View {
             .padding(.leading, 70)
             .padding(.trailing, 12)
             .background(AppTheme.sidebarBackground(model.selectedTheme))
-            .overlay(alignment: .trailing) {
-                Rectangle()
-                    .fill(AppTheme.sidebarBorder(model.selectedTheme))
-                    .frame(width: 1)
-            }
         }
         .frame(width: ShellMetrics.sidebarWidth, height: ShellMetrics.titlebarHeight)
+        .background(alignment: .leading) {
+            AppTheme.railBackground(model.selectedTheme)
+                .frame(width: ShellMetrics.titlebarCornerBleed)
+                .offset(x: -ShellMetrics.titlebarCornerBleed)
+        }
     }
 }
 
