@@ -3,7 +3,8 @@ import WebKit
 
 private enum ShellMetrics {
     static let railWidth: CGFloat = 52
-    static let sidebarWidth: CGFloat = 280
+    static let titlebarRailWidth: CGFloat = 60
+    static let sidebarWidth: CGFloat = 268
     static let titlebarHeight: CGFloat = 44
 }
 
@@ -345,7 +346,7 @@ struct SidebarTitlebarOverlay: View {
     var body: some View {
         HStack(spacing: 0) {
             AppTheme.railBackground(model.selectedTheme)
-                .frame(width: ShellMetrics.railWidth)
+                .frame(width: ShellMetrics.titlebarRailWidth)
             HStack(spacing: 10) {
                 Button { model.openFolderPicker(additive: true) } label: {
                     Image(systemName: "folder.badge.plus")
