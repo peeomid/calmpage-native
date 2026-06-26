@@ -659,6 +659,34 @@ final class CalmPageNativeTests: XCTestCase {
         XCTAssertEqual(try store.searchFiles(query: "w2_research_notes.md", rootIDs: [root.id], limit: 10).map(\.id), [file.id])
     }
 
+    func testLibraryStoreSearchMatchesMultiplePathWordsAcrossSeparators() throws {
+        let store = try LibraryStore.memory()
+        let root = RootFolder(id: "/tmp/vault", url: URL(fileURLWithPath: "/tmp/vault"), name: "vault")
+        let file = MarkdownFile(
+            id: "/tmp/vault/content-engine/runs/final.md",
+            url: URL(fileURLWithPath: "/tmp/vault/content-engine/runs/final.md"),
+            relativePath: "content-engine/runs/final.md",
+            title: "final",
+            sizeBytes: 1,
+            modifiedAt: .now
+        )
+        try store.upsertRoot(root)
+        try store.upsertFiles([file], rootID: root.id)
+
+        XCTAssertEqual(try store.searchFiles(query: "content engine", rootIDs: [root.id], limit: 10).map(\.id), [file.id])
+    }
+
+    func testLibraryStoreSearchRanksFilenameBeforeDeepPathMatch() throws {
+        let store = try LibraryStore.memory()
+        let root = RootFolder(id: "/tmp/vault", url: URL(fileURLWithPath: "/tmp/vault"), name: "vault")
+        let filenameMatch = MarkdownFile(id: "/tmp/vault/content-engine.md", url: URL(fileURLWithPath: "/tmp/vault/content-engine.md"), relativePath: "content-engine.md", title: "content-engine", sizeBytes: 1, modifiedAt: .now)
+        let deepPathMatch = MarkdownFile(id: "/tmp/vault/content-engine/runs/final.md", url: URL(fileURLWithPath: "/tmp/vault/content-engine/runs/final.md"), relativePath: "content-engine/runs/final.md", title: "final", sizeBytes: 1, modifiedAt: .now)
+        try store.upsertRoot(root)
+        try store.upsertFiles([deepPathMatch, filenameMatch], rootID: root.id)
+
+        XCTAssertEqual(try store.searchFiles(query: "content engine", rootIDs: [root.id], limit: 10).map(\.id), [filenameMatch.id, deepPathMatch.id])
+    }
+
     func testLibraryStoreFindsPartialNormalizedPathFragment() throws {
         let store = try LibraryStore.memory()
         let root = RootFolder(id: "/tmp/content", url: URL(fileURLWithPath: "/tmp/content"), name: "content")

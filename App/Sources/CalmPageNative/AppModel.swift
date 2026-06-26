@@ -972,15 +972,21 @@ final class AppModel: ObservableObject {
         palettePathMatch = nil
         let rootIDs = activeRootIDs
         let roots = activeRoots
+        for candidate in candidates {
+            if let indexed = try? libraryStore.findFileByNormalizedPath(candidate, rootIDs: rootIDs) {
+                paletteStatusMessage = "Found pasted path"
+                palettePathMatch = indexed
+                paletteItemsSnapshot = [
+                    PaletteItem(id: "status:path", title: paletteStatusMessage, subtitle: "Pasted path lookup", symbol: "magnifyingglass", kind: .status),
+                    PaletteItem(id: "path-match:\(indexed.id)", title: indexed.title, subtitle: "Matched pasted path · \(indexed.relativePath)", symbol: "doc.text.magnifyingglass", kind: .pathMatch(indexed))
+                ]
+                refreshPaletteItems()
+                return
+            }
+        }
         pathLookupTask = Task { [libraryStore] in
-            try? await Task.sleep(nanoseconds: 120_000_000)
             if Task.isCancelled { return }
             let found = await Task.detached(priority: .utility) { () -> MarkdownFile? in
-                for candidate in candidates {
-                    if let indexed = try? libraryStore.findFileByNormalizedPath(candidate, rootIDs: rootIDs) {
-                        return indexed
-                    }
-                }
                 for candidate in candidates {
                     if let indexed = try? libraryStore.findFileContainingNormalizedPath(candidate, rootIDs: rootIDs) {
                         return indexed

@@ -140,9 +140,22 @@ final class LibraryStore: @unchecked Sendable {
 
     func searchFiles(query searchText: String, limit: Int) throws -> [MarkdownFile] {
         try locked {
-            let pattern = "%\(searchText.lowercased())%"
-            let normalizedPattern = "%\(Self.normalizedSearchText(searchText))%"
-            return try query("""
+            let tokens = Self.searchTokens(searchText)
+            guard !tokens.isEmpty else {
+                return try query("""
+        SELECT id, path, relative_path, title, size_bytes, modified_at FROM files
+        ORDER BY relative_path ASC
+        LIMIT ?1
+        """) { statement in
+            sqlite3_bind_int(statement, 1, Int32(limit))
+        } map: { statement in
+            markdownFile(from: statement)
+        }
+            }
+            let candidateLimit = max(limit * 8, 120)
+            let firstTokenPattern = "%\(tokens[0])%"
+            let firstNormalizedPattern = "%\(Self.normalizedSearchText(tokens[0]))%"
+            let candidates = try query("""
         SELECT id, path, relative_path, title, size_bytes, modified_at FROM files
         WHERE lower(title) LIKE ?1
            OR lower(relative_path) LIKE ?1
@@ -151,12 +164,13 @@ final class LibraryStore: @unchecked Sendable {
         ORDER BY relative_path ASC
         LIMIT ?3
         """) { statement in
-            bindText(statement, 1, pattern)
-            bindText(statement, 2, normalizedPattern)
-            sqlite3_bind_int(statement, 3, Int32(limit))
+            bindText(statement, 1, firstTokenPattern)
+            bindText(statement, 2, firstNormalizedPattern)
+            sqlite3_bind_int(statement, 3, Int32(candidateLimit))
         } map: { statement in
             markdownFile(from: statement)
         }
+            return Self.rank(files: candidates, tokens: tokens, limit: limit)
         }
     }
 
@@ -164,10 +178,26 @@ final class LibraryStore: @unchecked Sendable {
         guard !rootIDs.isEmpty else { return [] }
         return try locked {
             let ids = Array(rootIDs).sorted()
+            let tokens = Self.searchTokens(searchText)
+            guard !tokens.isEmpty else {
+                let placeholders = ids.enumerated().map { "?\($0.offset + 1)" }.joined(separator: ",")
+                return try query("""
+        SELECT id, path, relative_path, title, size_bytes, modified_at FROM files
+        WHERE root_id IN (\(placeholders))
+        ORDER BY relative_path ASC
+        LIMIT ?\(ids.count + 1)
+        """) { statement in
+            for (index, id) in ids.enumerated() { bindText(statement, Int32(index + 1), id) }
+            sqlite3_bind_int(statement, Int32(ids.count + 1), Int32(limit))
+        } map: { statement in
+            markdownFile(from: statement)
+        }
+            }
             let placeholders = ids.enumerated().map { "?\($0.offset + 3)" }.joined(separator: ",")
-            let pattern = "%\(searchText.lowercased())%"
-            let normalizedPattern = "%\(Self.normalizedSearchText(searchText))%"
-            return try query("""
+            let candidateLimit = max(limit * 8, 120)
+            let firstTokenPattern = "%\(tokens[0])%"
+            let firstNormalizedPattern = "%\(Self.normalizedSearchText(tokens[0]))%"
+            let candidates = try query("""
         SELECT id, path, relative_path, title, size_bytes, modified_at FROM files
         WHERE (
             lower(title) LIKE ?1
@@ -178,14 +208,57 @@ final class LibraryStore: @unchecked Sendable {
         ORDER BY relative_path ASC
         LIMIT ?\(ids.count + 3)
         """) { statement in
-            bindText(statement, 1, pattern)
-            bindText(statement, 2, normalizedPattern)
+            bindText(statement, 1, firstTokenPattern)
+            bindText(statement, 2, firstNormalizedPattern)
             for (index, id) in ids.enumerated() { bindText(statement, Int32(index + 3), id) }
-            sqlite3_bind_int(statement, Int32(ids.count + 3), Int32(limit))
+            sqlite3_bind_int(statement, Int32(ids.count + 3), Int32(candidateLimit))
         } map: { statement in
             markdownFile(from: statement)
         }
+            return Self.rank(files: candidates, tokens: tokens, limit: limit)
         }
+    }
+
+    private static func searchTokens(_ text: String) -> [String] {
+        text.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func rank(files: [MarkdownFile], tokens: [String], limit: Int) -> [MarkdownFile] {
+        files.compactMap { file -> (MarkdownFile, Int)? in
+            let title = file.title.lowercased()
+            let path = file.relativePath.lowercased()
+            let filename = file.url.lastPathComponent.lowercased()
+            let tokenText = path.components(separatedBy: CharacterSet.alphanumerics.inverted).joined(separator: " ")
+            let normalized = normalizedSearchText(path + " " + title)
+            let queryText = tokens.joined(separator: " ")
+            let normalizedQuery = normalizedSearchText(queryText)
+            guard tokens.allSatisfy({ token in
+                title.contains(token) || path.contains(token) || tokenText.contains(token) || normalized.contains(normalizedSearchText(token))
+            }) else { return nil }
+            var score = 0
+            if title == queryText { score += 1000 }
+            if filename == queryText { score += 900 }
+            if title.contains(queryText) { score += 500 }
+            if filename.contains(queryText) { score += 420 }
+            if path.contains(queryText) { score += 320 }
+            if normalized.contains(normalizedQuery) { score += 260 }
+            for token in tokens {
+                if title.contains(token) { score += 90 }
+                if filename.contains(token) { score += 70 }
+                if path.contains(token) { score += 35 }
+            }
+            score -= min(path.count / 8, 80)
+            return (file, score)
+        }
+        .sorted { left, right in
+            if left.1 != right.1 { return left.1 > right.1 }
+            return left.0.relativePath.localizedStandardCompare(right.0.relativePath) == .orderedAscending
+        }
+        .prefix(limit)
+        .map(\.0)
     }
 
     private static func normalizedSearchText(_ text: String) -> String {
