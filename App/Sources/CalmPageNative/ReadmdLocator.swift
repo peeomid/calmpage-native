@@ -28,7 +28,7 @@ struct ReadmdSettings: Codable, Equatable, Hashable {
 }
 
 enum ReadmdLocator {
-    static let homebrewInstallCommand = "brew update && brew tap peeomid/tap && brew install peeomid/tap/readmd"
+    static let homebrewInstallCommand = "brew tap peeomid/tap && git -C \"$(brew --repo peeomid/tap)\" pull --ff-only && brew install peeomid/tap/readmd"
     static let githubCargoInstallCommand = "cargo install --git https://github.com/peeomid/readmd.git --force"
 
     static func resolve(settings: ReadmdSettings) async -> ReadmdSettings {
