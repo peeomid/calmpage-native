@@ -4,6 +4,8 @@ CalmPage Native is a lightweight macOS version of the previous CalmPage reading 
 
 It keeps the same core idea: browse a folder of Markdown files and read them in a calm, focused interface. This native version is built to use less memory than the earlier WebView-based app.
 
+![CalmPage Native reading interface](docs/assets/calmpage-native-screenshot.png)
+
 ## Why Native
 
 - Native macOS UI with SwiftUI and AppKit.
