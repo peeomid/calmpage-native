@@ -976,12 +976,17 @@ struct AppStatusToast: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .foregroundStyle(AppTheme.icon(model.selectedTheme))
-            Text(message)
-                .lineLimit(1)
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundStyle(AppTheme.icon(model.selectedTheme))
+                Text(message)
+                    .lineLimit(1)
+            }
         }
+        .buttonStyle(.plain)
+        .help(helpText)
+        .disabled(model.readmdSettings.status == .ready && model.workspaceRefreshMessage.isEmpty)
         .font(.caption)
         .foregroundStyle(AppTheme.secondaryText(model.selectedTheme))
         .padding(.horizontal, 11)
@@ -990,6 +995,14 @@ struct AppStatusToast: View {
         .clipShape(Capsule())
         .overlay { Capsule().stroke(AppTheme.secondaryText(model.selectedTheme).opacity(0.18), lineWidth: 1) }
         .shadow(color: Color.black.opacity(AppTheme.isDark(model.selectedTheme) ? 0.20 : 0.08), radius: 12, x: 0, y: 6)
+    }
+
+    private func action() {
+        if model.readmdSettings.status != .ready { model.openReadmdSettings() }
+    }
+
+    private var helpText: String {
+        model.readmdSettings.status == .ready ? message : "Open readmd settings"
     }
 
     private var message: String {
@@ -2166,9 +2179,32 @@ struct RendererSettingsPane: View {
             Divider().padding(.vertical, 4)
             Text("Install readmd")
                 .font(.headline)
-            Text("Recommended: install with Homebrew, then use Auto-detect. CalmPage checks for the Osimify readmd renderer before using it.")
+            Text("Recommended: install with Homebrew. CalmPage checks for the Osimify readmd renderer before using it.")
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText(model.selectedTheme))
+            HStack {
+                Button {
+                    model.installReadmdWithHomebrew()
+                } label: {
+                    Label("Install with Homebrew", systemImage: "arrow.down.circle")
+                }
+                .disabled(model.isInstallingReadmd)
+
+                Button {
+                    model.installReadmdWithCargo()
+                } label: {
+                    Label("Install with Cargo", systemImage: "shippingbox")
+                }
+                .disabled(model.isInstallingReadmd)
+
+                if model.isInstallingReadmd { ProgressView().controlSize(.small) }
+            }
+            if !model.readmdInstallMessage.isEmpty {
+                Text(model.readmdInstallMessage)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText(model.selectedTheme))
+                    .lineLimit(3)
+            }
             VStack(alignment: .leading, spacing: 6) {
                 SettingsInfoRow(title: "Homebrew", value: ReadmdLocator.homebrewInstallCommand)
                 SettingsInfoRow(title: "Cargo from GitHub", value: ReadmdLocator.githubCargoInstallCommand)

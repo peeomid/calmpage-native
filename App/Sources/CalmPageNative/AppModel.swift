@@ -29,6 +29,8 @@ final class AppModel: ObservableObject {
     @Published var selectedTheme = "White"
     @Published var selectedReadmdStyle = "Editorial"
     @Published var readmdSettings = ReadmdSettings()
+    @Published var isInstallingReadmd = false
+    @Published var readmdInstallMessage = ""
     @Published var settingsSection: SettingsSection = .reading
     @Published private(set) var fileCount = 0
     @Published private(set) var visibleFilesSnapshot: [MarkdownFile] = []
@@ -626,6 +628,74 @@ final class AppModel: ObservableObject {
         readmdSettings.message = "Checking readmd..."
         saveState()
         Task { await resolveReadmdPath() }
+    }
+
+    func openReadmdSettings() {
+        openSettings(section: .renderer)
+    }
+
+    func installReadmdWithHomebrew() {
+        installReadmd(command: ReadmdLocator.homebrewInstallCommand, label: "Homebrew")
+    }
+
+    func installReadmdWithCargo() {
+        installReadmd(command: ReadmdLocator.githubCargoInstallCommand, label: "Cargo")
+    }
+
+    private func installReadmd(command: String, label: String) {
+        guard !isInstallingReadmd else { return }
+        isInstallingReadmd = true
+        readmdInstallMessage = "Installing readmd with \(label)..."
+        readmdSettings.message = readmdInstallMessage
+        Task {
+            let result = await Self.runShell(command)
+            isInstallingReadmd = false
+            if result.status == 0 {
+                readmdInstallMessage = "readmd installed. Checking setup..."
+                autoDetectReadmd()
+            } else {
+                let detail = result.error.isEmpty ? result.output : result.error
+                let shortDetail = String(detail.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240))
+                readmdInstallMessage = "Install failed. \(shortDetail)"
+                readmdSettings.status = .missing
+                readmdSettings.message = readmdInstallMessage
+                saveState()
+            }
+        }
+    }
+
+    nonisolated private static func runShell(_ command: String) async -> (status: Int32, output: String, error: String) {
+        await Task.detached(priority: .utility) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = ["-lc", command]
+            let tempDirectory = FileManager.default.temporaryDirectory
+            let outputURL = tempDirectory.appendingPathComponent("calmpage-readmd-install-\(UUID().uuidString).out")
+            let errorURL = tempDirectory.appendingPathComponent("calmpage-readmd-install-\(UUID().uuidString).err")
+            _ = FileManager.default.createFile(atPath: outputURL.path, contents: nil)
+            _ = FileManager.default.createFile(atPath: errorURL.path, contents: nil)
+            let outputHandle = try? FileHandle(forWritingTo: outputURL)
+            let errorHandle = try? FileHandle(forWritingTo: errorURL)
+            process.standardOutput = outputHandle
+            process.standardError = errorHandle
+            defer {
+                try? outputHandle?.close()
+                try? errorHandle?.close()
+                try? FileManager.default.removeItem(at: outputURL)
+                try? FileManager.default.removeItem(at: errorURL)
+            }
+            do {
+                try process.run()
+                process.waitUntilExit()
+                try? outputHandle?.synchronize()
+                try? errorHandle?.synchronize()
+                let outputText = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? ""
+                let errorText = (try? String(contentsOf: errorURL, encoding: .utf8)) ?? ""
+                return (process.terminationStatus, outputText, errorText)
+            } catch {
+                return (1, "", error.localizedDescription)
+            }
+        }.value
     }
 
     func runPaletteItem(_ item: PaletteItem) {
