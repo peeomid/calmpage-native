@@ -90,6 +90,10 @@ final class AppModel: ObservableObject {
         return nil
     }
 
+    var readerVimKeysEnabled: Bool {
+        !paletteOpen && !settingsOpen && !helpOpen && !documentFindOpen
+    }
+
     var visibleFiles: [MarkdownFile] {
         (try? libraryStore.searchFiles(query: query.trimmingCharacters(in: .whitespacesAndNewlines), rootIDs: activeRootIDs, limit: 500)) ?? []
     }

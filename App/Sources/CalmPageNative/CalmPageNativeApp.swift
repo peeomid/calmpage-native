@@ -1395,7 +1395,7 @@ struct ReaderView: View {
                     onFindStatusChange: { model.updateDocumentFindStatus(current: $0, total: $1) },
                     onActiveHeadingChange: { model.updateActiveHeading(id: $0) }
                 )
-                .background(ReaderVimKeyHandlingView(handle: model.handleReaderVimAction))
+                .background(ReaderVimKeyHandlingView(enabled: model.readerVimKeysEnabled, handle: model.handleReaderVimAction))
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -1414,7 +1414,7 @@ struct ReaderView: View {
                         .background(ReaderScrollResolver { scrollView = $0 })
                     }
                     .background(readerBackground)
-                    .background(ReaderVimKeyHandlingView(handle: model.handleReaderVimAction))
+                    .background(ReaderVimKeyHandlingView(enabled: model.readerVimKeysEnabled, handle: model.handleReaderVimAction))
                     .onChange(of: model.headingScrollTargetID) { _, target in
                         guard let target else { return }
                         withAnimation(.easeInOut(duration: 0.18)) { proxy.scrollTo(target, anchor: .top) }
@@ -2647,6 +2647,7 @@ private extension NSScrollView {
 }
 
 struct ReaderVimKeyHandlingView: NSViewRepresentable {
+    var enabled: Bool
     var handle: (ReaderVimAction) -> Void
 
     func makeNSView(context: Context) -> ReaderVimKeyHandlingNSView {
@@ -2655,22 +2656,28 @@ struct ReaderVimKeyHandlingView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: ReaderVimKeyHandlingNSView, context: Context) {
+        context.coordinator.enabled = enabled
         context.coordinator.handle = handle
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(handle: handle) }
+    func makeCoordinator() -> Coordinator { Coordinator(enabled: enabled, handle: handle) }
 
     final class Coordinator {
+        var enabled: Bool
         var handle: (ReaderVimAction) -> Void
         private var monitor: Any?
 
-        init(handle: @escaping (ReaderVimAction) -> Void) { self.handle = handle }
+        init(enabled: Bool, handle: @escaping (ReaderVimAction) -> Void) {
+            self.enabled = enabled
+            self.handle = handle
+        }
         deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
 
         func installMonitor() {
             guard monitor == nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 guard let self, let chars = event.charactersIgnoringModifiers, !event.modifierFlags.contains(.command) else { return event }
+                guard self.enabled else { return event }
                 if event.window?.firstResponder is NSTextView { return event }
                 switch chars {
                 case "j": self.handle(.down); return nil

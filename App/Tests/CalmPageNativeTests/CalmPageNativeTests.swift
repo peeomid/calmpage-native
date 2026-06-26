@@ -144,6 +144,23 @@ final class CalmPageNativeTests: XCTestCase {
     }
 
     @MainActor
+    func testReaderVimKeysDisableWhileCommandPaletteIsOpen() {
+        let model = makeModel()
+
+        XCTAssertTrue(model.readerVimKeysEnabled)
+        model.paletteOpen = true
+        XCTAssertFalse(model.readerVimKeysEnabled)
+    }
+
+    @MainActor
+    func testReaderVimKeysDisableWhileDocumentFindIsOpen() {
+        let model = makeModel()
+
+        model.documentFindOpen = true
+        XCTAssertFalse(model.readerVimKeysEnabled)
+    }
+
+    @MainActor
     func testNormalizedPastedPathRemovesTerminalLineBreaksAndSpaces() {
         let raw = "docs/lessons/w2-setup-buying-fit-mini-orchestrator-lesson-2026-\n        06-23.md"
 
@@ -718,6 +735,16 @@ final class CalmPageNativeTests: XCTestCase {
         try store.upsertFiles([deepPathMatch, filenameMatch], rootID: root.id)
 
         XCTAssertEqual(try store.searchFiles(query: "content engine", rootIDs: [root.id], limit: 10).map(\.id), [filenameMatch.id, deepPathMatch.id])
+    }
+
+    func testLibraryStoreSearchMatchesTypoInPathWord() throws {
+        let store = try LibraryStore.memory()
+        let root = RootFolder(id: "/tmp/vault", url: URL(fileURLWithPath: "/tmp/vault"), name: "vault")
+        let file = MarkdownFile(id: "/tmp/vault/content-engine/final.md", url: URL(fileURLWithPath: "/tmp/vault/content-engine/final.md"), relativePath: "content-engine/final.md", title: "final", sizeBytes: 1, modifiedAt: .now)
+        try store.upsertRoot(root)
+        try store.upsertFiles([file], rootID: root.id)
+
+        XCTAssertEqual(try store.searchFiles(query: "conteng engine", rootIDs: [root.id], limit: 10).map(\.id), [file.id])
     }
 
     func testLibraryStoreFindsPartialNormalizedPathFragment() throws {
