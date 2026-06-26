@@ -553,44 +553,44 @@ enum AppTheme {
 
     static func tabStripBackground(_ theme: String) -> Color {
         switch theme {
-        case "Graphite": return Color(red: 0.15, green: 0.145, blue: 0.13)
-        case "Midnight": return Color(red: 0.10, green: 0.13, blue: 0.16)
-        case "Sepia": return Color(red: 0.89, green: 0.82, blue: 0.70)
-        case "Paper": return Color(red: 0.94, green: 0.89, blue: 0.78)
-        default: return Color(red: 0.94, green: 0.94, blue: 0.90)
+        case "Graphite": return Color(red: 0.185, green: 0.175, blue: 0.158)
+        case "Midnight": return Color(red: 0.125, green: 0.155, blue: 0.185)
+        case "Sepia": return Color(red: 0.92, green: 0.86, blue: 0.74)
+        case "Paper": return Color(red: 0.955, green: 0.91, blue: 0.81)
+        default: return Color(red: 0.935, green: 0.94, blue: 0.91)
         }
     }
 
     static func activeTabBackground(_ theme: String) -> Color {
         switch theme {
-        case "Graphite": return Color(red: 0.27, green: 0.26, blue: 0.23)
-        case "Midnight": return Color(red: 0.21, green: 0.26, blue: 0.31)
-        case "Sepia": return Color(red: 0.98, green: 0.91, blue: 0.78)
-        case "Paper": return Color(red: 1.0, green: 0.96, blue: 0.84)
-        default: return Color(red: 1.0, green: 0.995, blue: 0.965)
+        case "Graphite": return Color(red: 0.235, green: 0.225, blue: 0.205)
+        case "Midnight": return Color(red: 0.175, green: 0.215, blue: 0.255)
+        case "Sepia": return Color(red: 0.955, green: 0.89, blue: 0.77)
+        case "Paper": return Color(red: 0.985, green: 0.94, blue: 0.84)
+        default: return Color(red: 0.985, green: 0.985, blue: 0.955)
         }
     }
 
     static func inactiveTabBackground(_ theme: String) -> Color {
         switch theme {
-        case "Graphite", "Midnight": return Color.white.opacity(0.09)
-        case "Sepia": return Color(red: 0.84, green: 0.76, blue: 0.64)
-        case "Paper": return Color(red: 0.90, green: 0.84, blue: 0.72)
-        default: return Color(red: 0.86, green: 0.87, blue: 0.83)
+        case "Graphite", "Midnight": return Color.white.opacity(0.045)
+        case "Sepia": return Color(red: 0.905, green: 0.835, blue: 0.72)
+        case "Paper": return Color(red: 0.94, green: 0.885, blue: 0.78)
+        default: return Color(red: 0.91, green: 0.92, blue: 0.89)
         }
     }
 
     static func tabBorder(_ theme: String) -> Color {
         switch theme {
-        case "Graphite", "Midnight": return Color.white.opacity(0.18)
-        default: return Color(red: 0.68, green: 0.68, blue: 0.62)
+        case "Graphite", "Midnight": return Color.white.opacity(0.13)
+        default: return Color(red: 0.58, green: 0.60, blue: 0.54)
         }
     }
 
     static func breadcrumbBackground(_ theme: String) -> Color {
         switch theme {
-        case "Graphite", "Midnight": return tabStripBackground(theme).opacity(0.96)
-        default: return tabStripBackground(theme).opacity(0.88)
+        case "Graphite", "Midnight": return tabStripBackground(theme).opacity(0.94)
+        default: return tabStripBackground(theme).opacity(0.70)
         }
     }
 
@@ -1064,7 +1064,7 @@ struct ReaderTopTabBarView: View {
         .background(AppTheme.tabStripBackground(model.selectedTheme))
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(AppTheme.tabBorder(model.selectedTheme).opacity(0.75))
+                .fill(AppTheme.tabBorder(model.selectedTheme).opacity(0.32))
                 .frame(height: 1)
         }
     }
@@ -1099,7 +1099,7 @@ struct ReaderBreadcrumbBar: View {
         .background(AppTheme.breadcrumbBackground(model.selectedTheme))
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(AppTheme.tabBorder(model.selectedTheme).opacity(0.85))
+                .fill(AppTheme.tabBorder(model.selectedTheme).opacity(0.26))
                 .frame(height: 1)
         }
         .contentShape(Rectangle())
@@ -1257,13 +1257,13 @@ struct ToolbarTabStripView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 0) {
                             ForEach(model.tabs) { tab in
                                 ToolbarTabChip(tab: tab)
                                     .id(tab.id)
                             }
                         }
-                        .padding(.vertical, 2)
+                        .padding(.vertical, 1)
                     }
                     .onAppear { scrollActiveTab(proxy) }
                     .onChange(of: model.activeTabID) { _, _ in scrollActiveTab(proxy) }
@@ -1315,21 +1315,19 @@ struct ToolbarTabChip: View {
             .foregroundStyle(AppTheme.icon(model.selectedTheme).opacity(0.72))
             .help("Close tab")
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
         .background(isActive ? AppTheme.activeTabBackground(model.selectedTheme) : AppTheme.inactiveTabBackground(model.selectedTheme))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: 3))
         .overlay {
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(AppTheme.tabBorder(model.selectedTheme).opacity(isActive ? 0.95 : 0.58), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(AppTheme.tabBorder(model.selectedTheme).opacity(isActive ? 0.50 : 0.24), lineWidth: 1)
         }
         .overlay(alignment: .top) {
             if isActive {
                 Rectangle()
-                    .fill(Color.orange.opacity(0.78))
-                    .frame(height: 2)
-                    .clipShape(RoundedRectangle(cornerRadius: 2))
-                    .padding(.horizontal, 7)
+                    .fill(Color.orange.opacity(0.45))
+                    .frame(height: 1)
             }
         }
         .help(tab.file.url.path)
