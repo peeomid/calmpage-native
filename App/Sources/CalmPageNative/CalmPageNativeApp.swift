@@ -1097,11 +1097,6 @@ struct ReaderBreadcrumbBar: View {
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, minHeight: ShellMetrics.breadcrumbHeight, maxHeight: ShellMetrics.breadcrumbHeight, alignment: .leading)
         .background(AppTheme.breadcrumbBackground(model.selectedTheme))
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppTheme.tabBorder(model.selectedTheme).opacity(0.26))
-                .frame(height: 1)
-        }
         .contentShape(Rectangle())
         .onTapGesture { pathOpen.toggle() }
         .focusable(false)
@@ -1258,8 +1253,8 @@ struct ToolbarTabStripView: View {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 0) {
-                            ForEach(model.tabs) { tab in
-                                ToolbarTabChip(tab: tab)
+                            ForEach(Array(model.tabs.enumerated()), id: \.element.id) { index, tab in
+                                ToolbarTabChip(tab: tab, showsLeadingSeparator: index > 0)
                                     .id(tab.id)
                             }
                         }
@@ -1285,6 +1280,7 @@ struct ToolbarTabStripView: View {
 struct ToolbarTabChip: View {
     @EnvironmentObject private var model: AppModel
     let tab: ReaderTab
+    let showsLeadingSeparator: Bool
 
     private var isActive: Bool { model.activeTabID == tab.id }
 
@@ -1318,10 +1314,14 @@ struct ToolbarTabChip: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
         .background(isActive ? AppTheme.activeTabBackground(model.selectedTheme) : AppTheme.inactiveTabBackground(model.selectedTheme))
-        .clipShape(RoundedRectangle(cornerRadius: 3))
-        .overlay {
-            RoundedRectangle(cornerRadius: 3)
-                .stroke(AppTheme.tabBorder(model.selectedTheme).opacity(isActive ? 0.50 : 0.24), lineWidth: 1)
+        .clipShape(RoundedRectangle(cornerRadius: isActive ? 3 : 0))
+        .overlay(alignment: .leading) {
+            if showsLeadingSeparator && !isActive {
+                Rectangle()
+                    .fill(AppTheme.tabBorder(model.selectedTheme).opacity(0.22))
+                    .frame(width: 1)
+                    .padding(.vertical, 6)
+            }
         }
         .overlay(alignment: .top) {
             if isActive {
