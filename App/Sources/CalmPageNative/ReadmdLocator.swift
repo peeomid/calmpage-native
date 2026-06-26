@@ -28,7 +28,7 @@ struct ReadmdSettings: Codable, Equatable, Hashable {
 }
 
 enum ReadmdLocator {
-    static let homebrewInstallCommand = "brew tap peeomid/tap && git -C \"$(brew --repo peeomid/tap)\" pull --ff-only && brew install peeomid/tap/readmd"
+    static let homebrewInstallCommand = "HOMEBREW_NO_REQUIRE_TAP_TRUST=1 brew install peeomid/tap/readmd"
     static let githubCargoInstallCommand = "cargo install --git https://github.com/peeomid/readmd.git --force"
 
     static func resolve(settings: ReadmdSettings) async -> ReadmdSettings {
@@ -109,14 +109,27 @@ enum ReadmdLocator {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
-        let output = Pipe()
-        let error = Pipe()
-        process.standardOutput = output
-        process.standardError = error
+        let tempDirectory = FileManager.default.temporaryDirectory
+        let outputURL = tempDirectory.appendingPathComponent("calmpage-readmd-check-\(UUID().uuidString).out")
+        let errorURL = tempDirectory.appendingPathComponent("calmpage-readmd-check-\(UUID().uuidString).err")
+        _ = FileManager.default.createFile(atPath: outputURL.path, contents: nil)
+        _ = FileManager.default.createFile(atPath: errorURL.path, contents: nil)
+        let outputHandle = try FileHandle(forWritingTo: outputURL)
+        let errorHandle = try FileHandle(forWritingTo: errorURL)
+        process.standardOutput = outputHandle
+        process.standardError = errorHandle
+        defer {
+            try? outputHandle.close()
+            try? errorHandle.close()
+            try? FileManager.default.removeItem(at: outputURL)
+            try? FileManager.default.removeItem(at: errorURL)
+        }
         try process.run()
         process.waitUntilExit()
-        let outputText = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let errorText = String(data: error.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        try? outputHandle.synchronize()
+        try? errorHandle.synchronize()
+        let outputText = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? ""
+        let errorText = (try? String(contentsOf: errorURL, encoding: .utf8)) ?? ""
         return (process.terminationStatus, outputText, errorText)
     }
 }

@@ -654,14 +654,33 @@ final class AppModel: ObservableObject {
                 readmdInstallMessage = "readmd installed. Checking setup..."
                 autoDetectReadmd()
             } else {
-                let detail = result.error.isEmpty ? result.output : result.error
-                let shortDetail = String(detail.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240))
-                readmdInstallMessage = "Install failed. \(shortDetail)"
+                readmdInstallMessage = Self.readmdInstallFailureMessage(output: result.output, error: result.error)
                 readmdSettings.status = .missing
                 readmdSettings.message = readmdInstallMessage
                 saveState()
             }
         }
+    }
+
+    nonisolated static func readmdInstallFailureMessage(output: String, error: String) -> String {
+        let detail = [error, output]
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowercased = detail.lowercased()
+        if lowercased.contains("command not found: brew") || (lowercased.contains("no such file or directory") && lowercased.contains("brew")) {
+            return "Install failed. Homebrew was not found. Install Homebrew first, or use Install with Cargo."
+        }
+        if lowercased.contains("tap trust") || lowercased.contains("untrusted tap") || lowercased.contains("refusing to load formula") {
+            return "Install failed because Homebrew tap trust blocked install. CalmPage now uses a trust-bypass command; try Install with Homebrew again."
+        }
+        if lowercased.contains("no available formula") || lowercased.contains("no formulae found") {
+            return "Install failed because Homebrew could not find readmd. Try Install with Cargo, or run the Homebrew command shown below in Terminal."
+        }
+        if lowercased.contains("rust") || lowercased.contains("cargo") {
+            return "Install failed while building readmd. Install Rust or use Homebrew after it finishes installing build tools."
+        }
+        let shortDetail = detail.isEmpty ? "Unknown Homebrew error." : String(detail.prefix(260))
+        return "Install failed. \(shortDetail)"
     }
 
     nonisolated private static func runShell(_ command: String) async -> (status: Int32, output: String, error: String) {

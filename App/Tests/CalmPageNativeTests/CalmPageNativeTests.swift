@@ -417,6 +417,39 @@ final class CalmPageNativeTests: XCTestCase {
         XCTAssertTrue(result.message.contains("not the Osimify renderer"))
     }
 
+    func testReadmdLocatorHandlesLargeConfigOutput() throws {
+        let path = try makeExecutableReadmdScript(body: """
+        if [ "$1" = "--version" ]; then
+          echo "readmd 0.1.0"
+          exit 0
+        fi
+        if [ "$1" = "config" ] && [ "$2" = "print-default" ]; then
+          printf 'default_theme = "paper"\ndefault_style = "editorial"\n'
+          yes 'theme_value = "abcdefghijklmnopqrstuvwxyz"' | head -n 5000
+          exit 0
+        fi
+        exit 1
+        """)
+
+        let result = ReadmdLocator.validate(path: path.path)
+
+        XCTAssertEqual(result.status, .ready)
+    }
+
+    func testReadmdInstallFailureExplainsTapTrust() {
+        let message = AppModel.readmdInstallFailureMessage(output: "", error: "Error: Refusing to load formula mongodb/brew/mongodb-database-tools from untrusted tap mongodb/brew.")
+
+        XCTAssertTrue(message.contains("tap trust"))
+        XCTAssertTrue(message.contains("Install with Homebrew"))
+    }
+
+    func testReadmdInstallFailureExplainsMissingFormula() {
+        let message = AppModel.readmdInstallFailureMessage(output: "Warning: No available formula with the name readmd", error: "")
+
+        XCTAssertTrue(message.contains("could not find readmd"))
+        XCTAssertTrue(message.contains("Install with Cargo"))
+    }
+
     func testAppStateStoreLoadsLegacyStateWithoutWorkspaces() throws {
         let store = try makeTempStore()
         let legacyJSON = """
