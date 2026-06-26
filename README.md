@@ -1,29 +1,74 @@
 # CalmPage Native
 
-CalmPage Native is a lightweight macOS version of the previous CalmPage reading app.
+CalmPage Native is a free macOS app for reading local Markdown files. It is built for long notes, AI-generated plans, specs, reports, and project docs that are easier to read in a calm reader than inside an editor.
 
-It keeps the same core idea: browse a folder of Markdown files and read them in a calm, focused interface. This native version is built to use less memory than the earlier WebView-based app.
+This repo is the native rewrite of the earlier CalmPage app. The goal is the same: open local folders, browse Markdown files, and read them with good typography. The native version focuses more on speed, low memory use, and a macOS-style interface.
 
 ![CalmPage Native reading interface](docs/assets/calmpage-native-screenshot.png)
 
-## Why Native
+## Why it exists
 
-- Native macOS UI with SwiftUI and AppKit.
-- Lower fixed memory cost than a browser/WebView shell.
-- File bodies and render cache stay on disk when possible.
-- Markdown rendering stays shared through [`readmd`](https://github.com/peeomid/readmd).
+AI creates more Markdown than before: plans, specs, research notes, test reports, task logs, and long documents. IDEs are good for coding, but they are often noisy for reading. Long Markdown files become easy to skip when the reading view is bad.
 
-## Status
+CalmPage exists to make local Markdown feel like a real reading space:
 
-This is an early native rewrite.
+- quiet layout
+- clear typography
+- fast file browsing
+- useful navigation for long documents
+- keyboard-first workflow
+- no cloud sync requirement
 
-Current focus:
+## Who it is for
 
-- Fast local Markdown library scanning.
-- Multi-tab reading.
-- Workspace roots.
-- Lightweight render cache.
-- `readmd` setup and validation.
+- Developers reading AI-generated docs and project notes.
+- Writers and builders with local Markdown folders.
+- People who keep notes in files, not only in a hosted notes app.
+- Anyone who wants a Markdown reader, not a full editor.
+
+## Native rewrite target
+
+The previous CalmPage was useful, but it carried more fixed memory cost because it used a WebView app shell. CalmPage Native keeps the workflow and moves the app shell to SwiftUI/AppKit.
+
+Target behavior:
+
+- great reading experience and typography
+- fast startup and quick command palette
+- smooth indexing without blocking the UI
+- small memory footprint for large folders
+- keep only current reader state in memory when possible
+- store metadata, rendered output, and app state on disk
+- use [`readmd`](https://github.com/peeomid/readmd) as the Markdown rendering source of truth
+
+## Features
+
+- Open local Markdown folders.
+- Browse files in a folder tree.
+- Use workspaces to keep different folder sets separate.
+- Read multiple files with tabs.
+- Pin important files.
+- Search/open files with the command palette.
+- Match rough filenames and pasted paths from terminal output.
+- Use a floating table of contents for long docs.
+- Search headings with `/`.
+- Search inside the current document with `Cmd+F`.
+- Use Vim-style reader navigation keys in the document view.
+- Toggle focus mode for distraction-free reading.
+- Tune theme, font size, line spacing, and reading width.
+- Auto-refresh opened content when the file changes on disk.
+
+## Design notes
+
+CalmPage is read-first. It is not trying to replace an editor.
+
+The UI should stay quiet and useful:
+
+- sidebar for library, workspaces, and pins
+- titlebar-level tabs to save vertical space
+- subtle file path display when needed
+- bottom-right shortcut hints
+- floating contents panel instead of a heavy inspector panel
+- native macOS behavior where it helps, custom reading theme where it matters
 
 ## Requirements
 
@@ -38,8 +83,7 @@ Current focus:
 Recommended Homebrew install:
 
 ```bash
-brew tap peeomid/tap
-brew install readmd
+HOMEBREW_NO_REQUIRE_TAP_TRUST=1 brew install peeomid/tap/readmd
 ```
 
 Cargo fallback from GitHub:
