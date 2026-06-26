@@ -2577,12 +2577,6 @@ struct PaletteKeyHandlingView: NSViewRepresentable {
                 case 126:
                     self.moveUp()
                     return nil
-                case 38:
-                    self.moveDown()
-                    return nil
-                case 40:
-                    self.moveUp()
-                    return nil
                 case 36, 76:
                     self.submit()
                     return nil
