@@ -2166,12 +2166,16 @@ struct RendererSettingsPane: View {
             Divider().padding(.vertical, 4)
             Text("Install readmd")
                 .font(.headline)
-            Text("Install or build readmd, then use Auto-detect or Choose. If readmd is missing, CalmPage still opens but uses fallback rendering.")
+            Text("Recommended: install with Homebrew, then use Auto-detect. CalmPage checks for the Osimify readmd renderer before using it.")
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText(model.selectedTheme))
+            VStack(alignment: .leading, spacing: 6) {
+                SettingsInfoRow(title: "Homebrew", value: ReadmdLocator.homebrewInstallCommand)
+                SettingsInfoRow(title: "Cargo from GitHub", value: ReadmdLocator.githubCargoInstallCommand)
+            }
             HStack {
-                Button("Copy Install Hint") { copyInstallHint() }
-                Button("Open Renderer Settings") { model.settingsSection = .renderer }
+                Button("Copy Homebrew") { copyInstallCommand(ReadmdLocator.homebrewInstallCommand) }
+                Button("Copy Cargo") { copyInstallCommand(ReadmdLocator.githubCargoInstallCommand) }
             }
         }
     }
@@ -2192,9 +2196,9 @@ struct RendererSettingsPane: View {
         }
     }
 
-    private func copyInstallHint() {
+    private func copyInstallCommand(_ command: String) {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString("cargo install --path /path/to/readmd", forType: .string)
+        NSPasteboard.general.setString(command, forType: .string)
     }
 }
 

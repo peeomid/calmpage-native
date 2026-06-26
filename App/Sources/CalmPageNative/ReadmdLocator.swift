@@ -28,6 +28,9 @@ struct ReadmdSettings: Codable, Equatable, Hashable {
 }
 
 enum ReadmdLocator {
+    static let homebrewInstallCommand = "brew tap peeomid/tap && brew install readmd"
+    static let githubCargoInstallCommand = "cargo install --git https://github.com/peeomid/readmd.git --force"
+
     static func resolve(settings: ReadmdSettings) async -> ReadmdSettings {
         await Task.detached(priority: .utility) {
             switch settings.pathMode {
@@ -71,7 +74,7 @@ enum ReadmdLocator {
         updated.detectedPath = ""
         updated.status = .missing
         updated.version = ""
-        updated.message = "readmd was not found in common locations or PATH"
+        updated.message = "readmd was not found. Install with Homebrew, then run Auto-detect."
         return updated
     }
 
@@ -82,25 +85,38 @@ enum ReadmdLocator {
         guard FileManager.default.fileExists(atPath: expanded) else { return (.missing, "", "readmd not found at this path") }
         guard FileManager.default.isExecutableFile(atPath: expanded) else { return (.invalid, "", "File exists but is not executable") }
 
+        do {
+            let versionCheck = try run(path: expanded, arguments: ["--version"])
+            let version = versionCheck.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard versionCheck.status == 0 else {
+                return (.invalid, "", versionCheck.error.isEmpty ? "readmd --version failed" : versionCheck.error)
+            }
+
+            let configCheck = try run(path: expanded, arguments: ["config", "print-default"])
+            guard configCheck.status == 0,
+                  configCheck.output.contains("default_theme"),
+                  configCheck.output.contains("default_style") else {
+                return (.invalid, version, "This readmd is not the Osimify renderer. Install with Homebrew or GitHub Cargo.")
+            }
+
+            return (.ready, version, version.isEmpty ? "readmd is ready" : "readmd is ready: \(version)")
+        } catch {
+            return (.invalid, "", error.localizedDescription)
+        }
+    }
+
+    private static func run(path: String, arguments: [String]) throws -> (status: Int32, output: String, error: String) {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: expanded)
-        process.arguments = ["--version"]
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
         let output = Pipe()
         let error = Pipe()
         process.standardOutput = output
         process.standardError = error
-        do {
-            try process.run()
-            process.waitUntilExit()
-            let outputText = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            let errorText = String(data: error.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            let version = outputText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if process.terminationStatus == 0 {
-                return (.ready, version, version.isEmpty ? "readmd is ready" : version)
-            }
-            return (.invalid, "", errorText.isEmpty ? "readmd --version failed" : errorText)
-        } catch {
-            return (.invalid, "", error.localizedDescription)
-        }
+        try process.run()
+        process.waitUntilExit()
+        let outputText = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let errorText = String(data: error.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        return (process.terminationStatus, outputText, errorText)
     }
 }

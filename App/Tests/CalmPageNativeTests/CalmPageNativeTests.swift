@@ -383,6 +383,40 @@ final class CalmPageNativeTests: XCTestCase {
         XCTAssertEqual(result.status, .missing)
     }
 
+    func testReadmdLocatorAcceptsOsimifyReadmdShape() throws {
+        let path = try makeExecutableReadmdScript(body: """
+        if [ "$1" = "--version" ]; then
+          echo "readmd 0.1.0"
+          exit 0
+        fi
+        if [ "$1" = "config" ] && [ "$2" = "print-default" ]; then
+          printf 'default_theme = "paper"\ndefault_style = "editorial"\n'
+          exit 0
+        fi
+        exit 1
+        """)
+
+        let result = ReadmdLocator.validate(path: path.path)
+
+        XCTAssertEqual(result.status, .ready)
+        XCTAssertEqual(result.version, "readmd 0.1.0")
+    }
+
+    func testReadmdLocatorRejectsOtherReadmdBinary() throws {
+        let path = try makeExecutableReadmdScript(body: """
+        if [ "$1" = "--version" ]; then
+          echo "readmd 0.1.0"
+          exit 0
+        fi
+        exit 2
+        """)
+
+        let result = ReadmdLocator.validate(path: path.path)
+
+        XCTAssertEqual(result.status, .invalid)
+        XCTAssertTrue(result.message.contains("not the Osimify renderer"))
+    }
+
     func testAppStateStoreLoadsLegacyStateWithoutWorkspaces() throws {
         let store = try makeTempStore()
         let legacyJSON = """
@@ -708,6 +742,14 @@ final class CalmPageNativeTests: XCTestCase {
     private func makeTempStore() throws -> AppStateStore {
         let root = try makeTempVault()
         return AppStateStore(url: root.appendingPathComponent("state.json"))
+    }
+
+    private func makeExecutableReadmdScript(body: String) throws -> URL {
+        let root = try makeTempVault()
+        let path = root.appendingPathComponent("readmd")
+        try ("#!/bin/sh\n" + body + "\n").write(to: path, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path.path)
+        return path
     }
 
     @MainActor
