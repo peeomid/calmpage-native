@@ -13,6 +13,7 @@ private enum ShellMetrics {
 
 @main
 struct CalmPageNativeApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
 
     init() {
@@ -26,6 +27,7 @@ struct CalmPageNativeApp: App {
         WindowGroup {
         ContentView()
                 .environmentObject(model)
+                .onAppear { appDelegate.model = model }
                 .frame(minWidth: 1220, minHeight: 760)
         }
         .windowStyle(.hiddenTitleBar)
@@ -65,6 +67,31 @@ struct CalmPageNativeApp: App {
                 }
             }
         }
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    weak var model: AppModel? {
+        didSet { flushPendingURLs() }
+    }
+    private var pendingURLs: [URL] = []
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        pendingURLs.append(contentsOf: urls)
+        flushPendingURLs()
+    }
+
+    func application(_ sender: NSApplication, openFiles filenames: [String]) {
+        pendingURLs.append(contentsOf: filenames.map { URL(fileURLWithPath: $0) })
+        flushPendingURLs()
+        sender.reply(toOpenOrPrint: .success)
+    }
+
+    private func flushPendingURLs() {
+        guard let model, !pendingURLs.isEmpty else { return }
+        let urls = pendingURLs
+        pendingURLs = []
+        Task { @MainActor in model.openMarkdownURLs(urls) }
     }
 }
 

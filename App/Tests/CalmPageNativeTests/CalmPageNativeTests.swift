@@ -590,6 +590,33 @@ final class CalmPageNativeTests: XCTestCase {
     }
 
     @MainActor
+    func testAppModelOpensMarkdownURLOutsideLibrary() async throws {
+        let root = try makeTempVault()
+        let url = root.appendingPathComponent("external.md")
+        try "# External".write(to: url, atomically: true, encoding: .utf8)
+        let model = makeModel(cacheDirectory: root.appendingPathComponent("cache"))
+
+        model.openMarkdownURLs([url])
+
+        XCTAssertEqual(model.activeTabID, url.path)
+        XCTAssertEqual(model.tabs.first?.file.relativePath, "external.md")
+        try await waitForLoadedNote(in: model, title: "External")
+    }
+
+    @MainActor
+    func testAppModelIgnoresNonMarkdownURL() throws {
+        let root = try makeTempVault()
+        let url = root.appendingPathComponent("notes.txt")
+        try "No".write(to: url, atomically: true, encoding: .utf8)
+        let model = makeModel()
+
+        model.openMarkdownURLs([url])
+
+        XCTAssertNil(model.activeTabID)
+        XCTAssertTrue(model.tabs.isEmpty)
+    }
+
+    @MainActor
     func testAppModelReopeningActiveFileRefreshesChangedContent() async throws {
         let root = try makeTempVault()
         let url = root.appendingPathComponent("note.md")

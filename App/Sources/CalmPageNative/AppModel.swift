@@ -296,6 +296,12 @@ final class AppModel: ObservableObject {
         startIndexing(roots: rootsToIndex.isEmpty ? mergedRoots : rootsToIndex)
     }
 
+    func openMarkdownURLs(_ urls: [URL]) {
+        let files = urls.compactMap(markdownFileForDirectOpen)
+        guard !files.isEmpty else { return }
+        files.forEach(openFile)
+    }
+
     func removeRoot(_ root: RootFolder) {
         roots.removeAll { $0.id == root.id }
         for index in workspaces.indices {
@@ -1151,6 +1157,36 @@ final class AppModel: ObservableObject {
             modifiedAt: values?.contentModificationDate ?? .distantPast
         )
     }
+
+    private func markdownFileForDirectOpen(_ url: URL) -> MarkdownFile? {
+        let fileURL = url.standardizedFileURL.resolvingSymlinksInPath()
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+        guard Self.supportedMarkdownExtensions.contains(fileURL.pathExtension.lowercased()) else { return nil }
+        if let indexed = try? libraryStore.filesByIDs([fileURL.path]).first {
+            return indexed
+        }
+        let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        let containingRoot = roots
+            .map { ($0, $0.url.resolvingSymlinksInPath().path) }
+            .filter { fileURL.path == $0.1 || fileURL.path.hasPrefix($0.1 + "/") }
+            .max { $0.1.count < $1.1.count }
+        let relativePath: String
+        if let containingRoot {
+            relativePath = fileURL.path.replacingOccurrences(of: containingRoot.1 + "/", with: "")
+        } else {
+            relativePath = fileURL.lastPathComponent
+        }
+        return MarkdownFile(
+            id: fileURL.path,
+            url: fileURL,
+            relativePath: relativePath,
+            title: MarkdownScanner.title(from: fileURL),
+            sizeBytes: Int64(values?.fileSize ?? 0),
+            modifiedAt: values?.contentModificationDate ?? .distantPast
+        )
+    }
+
+    private static let supportedMarkdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "mdx"]
 
     private func refreshVisibleFiles(queryOverride: String? = nil) {
         let text = (queryOverride ?? query).trimmingCharacters(in: .whitespacesAndNewlines)
