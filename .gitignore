@@ -2,4 +2,5 @@ core/target/
 App/.build/
 App/:memory:
 build/
+release/
 .DS_Store

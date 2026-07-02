@@ -124,6 +124,17 @@ cd core
 cargo test
 ```
 
+## Release Notes
+
+### v0.1.6
+
+- Adds macOS Markdown file association for `.md`, `.markdown`, `.mdown`, `.mkd`, and `.mdx` files.
+- Expands README background, goals, features, and native rewrite target.
+
+### v0.1.5
+
+- Adds README screenshot for the CalmPage Native reading interface.
+
 ## Repo Layout
 
 - `App/`: SwiftUI/AppKit macOS app.
