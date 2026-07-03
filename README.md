@@ -126,6 +126,13 @@ cargo test
 
 ## Release Notes
 
+### v0.1.7
+
+- Fixes active tab refresh so edited files reload from disk without showing stale cached content.
+- Adds command palette copy actions and right-click file actions for relative and full paths.
+- Improves command palette focus when opened.
+- Adds background render-cache cleanup for files older than 7 days or cache size over 100 MB.
+
 ### v0.1.6
 
 - Adds macOS Markdown file association for `.md`, `.markdown`, `.mdown`, `.mkd`, and `.mdx` files.

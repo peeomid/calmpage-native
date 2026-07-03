@@ -72,12 +72,20 @@ final class AppModel: ObservableObject {
         AppPaths.migrateLegacyDataIfNeeded()
         self.libraryStore = libraryStore ?? (try! LibraryStore(url: AppPaths.libraryURL))
         self.renderer = renderer
+        pruneRenderCacheInBackground()
         if restoreSavedState {
             restoreState()
         } else {
             refreshFileCount()
         }
         Task { await resolveReadmdPath() }
+    }
+
+    private func pruneRenderCacheInBackground() {
+        guard let cache = renderer.cache else { return }
+        Task.detached(priority: .utility) {
+            try? cache.prune()
+        }
     }
 
     var activeTab: ReaderTab? {
@@ -190,6 +198,8 @@ final class AppModel: ObservableObject {
                 ("Toggle Focus Mode", "Reader-only layout", "text.book.closed"),
                 ("Find in Document", "Search inside current reader", "text.magnifyingglass"),
                 ("Filter Library", "Focus the library search field", "line.3.horizontal.decrease.circle"),
+                ("Copy Active Relative Path", "Copy current tab path from workspace root", "doc.on.clipboard"),
+                ("Copy Active Full Path", "Copy current tab full file path", "doc.on.doc"),
                 (activePinnedFileIDs.contains(activeTab?.file.id ?? "") ? "Unpin Active File" : "Pin Active File", "Pin or unpin current tab", "pin"),
                 ("Close All Tabs", "Release open note state", "xmark.rectangle.stack")
             ]
@@ -503,10 +513,15 @@ final class AppModel: ObservableObject {
             stopActiveFileWatcher()
             return
         }
-        watchActiveFile(activeTab.file)
-        readerState = .loading(activeTab.file.title)
+        let latestFile = refreshedFileMetadata(activeTab.file)
+        if let index = tabs.firstIndex(where: { $0.id == activeTab.id }), latestFile != tabs[index].file {
+            tabs[index] = ReaderTab(id: activeTab.id, file: latestFile)
+            saveState()
+        }
+        watchActiveFile(latestFile)
+        readerState = .loading(latestFile.title)
         Task {
-            let result = await renderer.render(file: activeTab.file, theme: selectedTheme, style: selectedReadmdStyle, fontSize: fontSize, contentWidth: contentWidth, readmdPath: readmdSettings.resolvedPath)
+            let result = await renderer.render(file: latestFile, theme: selectedTheme, style: selectedReadmdStyle, fontSize: fontSize, contentWidth: contentWidth, readmdPath: readmdSettings.resolvedPath, useCache: false)
             if self.activeTabID == activeTab.id {
                 self.readerState = result
                 if case .loaded(let note) = result {
@@ -517,7 +532,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func refreshActiveFileFromDisk(showLoading: Bool, showUpdatedMessage: Bool = false) {
+    private func refreshActiveFileFromDisk(showLoading: Bool, showUpdatedMessage: Bool = false, rewatchFile: Bool = false) {
         guard let activeTab, let index = tabs.firstIndex(where: { $0.id == activeTab.id }) else { return }
         let latestFile = refreshedFileMetadata(activeTab.file)
         let changed = latestFile.sizeBytes != activeTab.file.sizeBytes || latestFile.modifiedAt != activeTab.file.modifiedAt
@@ -526,9 +541,10 @@ final class AppModel: ObservableObject {
             saveState()
         }
         let fileToRender = changed ? latestFile : activeTab.file
+        if rewatchFile { watchActiveFile(fileToRender, force: true) }
         if showLoading { readerState = .loading(fileToRender.title) }
         Task {
-            let result = await renderer.render(file: fileToRender, theme: selectedTheme, style: selectedReadmdStyle, fontSize: fontSize, contentWidth: contentWidth, readmdPath: readmdSettings.resolvedPath)
+            let result = await renderer.render(file: fileToRender, theme: selectedTheme, style: selectedReadmdStyle, fontSize: fontSize, contentWidth: contentWidth, readmdPath: readmdSettings.resolvedPath, useCache: false)
             if self.activeTabID == activeTab.id {
                 self.readerState = result
                 if case .loaded(let note) = result {
@@ -540,8 +556,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func watchActiveFile(_ file: MarkdownFile) {
-        guard activeFileWatcher?.path != file.url.path else { return }
+    private func watchActiveFile(_ file: MarkdownFile, force: Bool = false) {
+        guard force || activeFileWatcher?.path != file.url.path else { return }
         activeFileRefreshTask?.cancel()
         activeFileWatcher = ActiveFileWatcher(url: file.url) { [weak self] in
             Task { @MainActor [weak self] in
@@ -562,7 +578,7 @@ final class AppModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                self?.refreshActiveFileFromDisk(showLoading: false, showUpdatedMessage: true)
+                self?.refreshActiveFileFromDisk(showLoading: false, showUpdatedMessage: true, rewatchFile: true)
             }
         }
     }
@@ -753,10 +769,17 @@ final class AppModel: ObservableObject {
         case "Toggle Focus Mode": focusMode.toggle()
         case "Find in Document": openDocumentFind()
         case "Filter Library": focusLibraryFilter()
+        case "Copy Active Relative Path": if let file = activeTab?.file { copyToPasteboard(file.relativePath) }
+        case "Copy Active Full Path": if let file = activeTab?.file { copyToPasteboard(file.url.path) }
         case "Pin Active File", "Unpin Active File": if let file = activeTab?.file { togglePin(file) }
         case "Close All Tabs": closeAllTabs()
         default: break
         }
+    }
+
+    func copyToPasteboard(_ value: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
     }
 
     func openDocumentFind() {

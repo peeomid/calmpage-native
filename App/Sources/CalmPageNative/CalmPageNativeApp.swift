@@ -994,8 +994,8 @@ struct FileContextMenu: View {
         Button("Open") { model.openFile(file) }
         Button(model.isPinned(file) ? "Unpin File" : "Pin File") { model.togglePin(file) }
         Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file.url]) }
-        Button("Copy Relative Path") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(file.relativePath, forType: .string) }
-        Button("Copy Full Path") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(file.url.path, forType: .string) }
+        Button("Copy Relative Path") { model.copyToPasteboard(file.relativePath) }
+        Button("Copy Full Path") { model.copyToPasteboard(file.url.path) }
     }
 }
 
@@ -2381,6 +2381,7 @@ struct CommandPaletteView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isStatus(item))
+                .contextMenu { PaletteItemContextMenu(item: item) }
                 .padding(.vertical, 4)
             }
             .listStyle(.plain)
@@ -2399,7 +2400,10 @@ struct CommandPaletteView: View {
             submit: { runSelected() },
             cancel: { model.paletteOpen = false }
         ))
-        .onAppear { focused = true; selectedIndex = 0 }
+        .onAppear { selectedIndex = 0; focusSearchFieldSoon() }
+        .onChange(of: model.paletteOpen) { _, isOpen in
+            if isOpen { focusSearchFieldSoon() }
+        }
         .onChange(of: model.paletteQuery) { _, _ in selectedIndex = 0 }
         .onChange(of: model.paletteItemsSnapshot.count) { _, count in
             selectedIndex = PaletteSelection.clamped(selectedIndex, count: count)
@@ -2453,6 +2457,38 @@ struct CommandPaletteView: View {
     private func isStatus(_ item: PaletteItem) -> Bool {
         if case .status = item.kind { return true }
         return false
+    }
+
+    private func focusSearchFieldSoon() {
+        focused = false
+        DispatchQueue.main.async { focused = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focused = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { focused = true }
+    }
+}
+
+struct PaletteItemContextMenu: View {
+    @EnvironmentObject private var model: AppModel
+    let item: PaletteItem
+
+    var body: some View {
+        if let file = item.fileForContextMenu {
+            Button("Open") { model.openFile(file) }
+            Button(model.isPinned(file) ? "Unpin File" : "Pin File") { model.togglePin(file) }
+            Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file.url]) }
+            Button("Copy Relative Path") { model.copyToPasteboard(file.relativePath) }
+            Button("Copy Full Path") { model.copyToPasteboard(file.url.path) }
+        }
+    }
+}
+
+private extension PaletteItem {
+    var fileForContextMenu: MarkdownFile? {
+        switch kind {
+        case .file(let file), .pinned(let file), .pathMatch(let file): return file
+        case .tab(let tab): return tab.file
+        default: return nil
+        }
     }
 }
 

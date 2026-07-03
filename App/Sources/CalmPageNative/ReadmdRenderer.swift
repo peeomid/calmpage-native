@@ -4,10 +4,10 @@ struct ReadmdRenderer {
     var cache: RenderCacheStore? = .live
     var useReadmdHTML = true
 
-    func render(file: MarkdownFile, theme: String = "White", style: String = "Editorial", fontSize: Double = 18, contentWidth: Double = 760, readmdPath: String? = nil) async -> ReaderState {
+    func render(file: MarkdownFile, theme: String = "White", style: String = "Editorial", fontSize: Double = 18, contentWidth: Double = 760, readmdPath: String? = nil, useCache: Bool = true) async -> ReaderState {
         do {
             let options = ReadmdRenderOptions(theme: theme, style: style, fontSize: fontSize, contentWidth: contentWidth)
-            if let cached = try cache?.load(file: file, options: options) {
+            if useCache, let cached = try cache?.load(file: file, options: options) {
                 return .loaded(cached)
             }
             let markdown = try await Task.detached(priority: .userInitiated) {
@@ -198,6 +198,8 @@ struct ReadmdRenderOptions: Hashable {
 
 struct RenderCacheStore {
     let directory: URL
+    static let defaultMaxAge: TimeInterval = 7 * 24 * 60 * 60
+    static let defaultMaxSizeBytes: Int64 = 100 * 1024 * 1024
 
     static var live: RenderCacheStore {
         AppPaths.migrateLegacyDataIfNeeded()
@@ -222,6 +224,33 @@ struct RenderCacheStore {
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(note)
         try data.write(to: cacheURL(for: file, options: options), options: [.atomic])
+    }
+
+    func prune(maxAge: TimeInterval = Self.defaultMaxAge, maxSizeBytes: Int64 = Self.defaultMaxSizeBytes, now: Date = Date()) throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: directory.path) else { return }
+        let urls = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey])
+        var entries: [(url: URL, modifiedAt: Date, size: Int64)] = []
+
+        for url in urls {
+            let values = try url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey])
+            guard values.isRegularFile == true else { continue }
+            let modifiedAt = values.contentModificationDate ?? .distantPast
+            let size = Int64(values.fileSize ?? 0)
+            if now.timeIntervalSince(modifiedAt) > maxAge {
+                try? fileManager.removeItem(at: url)
+            } else {
+                entries.append((url, modifiedAt, size))
+            }
+        }
+
+        var totalSize = entries.reduce(Int64(0)) { $0 + $1.size }
+        guard totalSize > maxSizeBytes else { return }
+        for entry in entries.sorted(by: { $0.modifiedAt < $1.modifiedAt }) {
+            try? fileManager.removeItem(at: entry.url)
+            totalSize -= entry.size
+            if totalSize <= maxSizeBytes { break }
+        }
     }
 
     func cacheURL(for file: MarkdownFile, options: ReadmdRenderOptions = .default) -> URL {

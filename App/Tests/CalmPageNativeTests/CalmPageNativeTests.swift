@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import CalmPageNative
 
@@ -74,6 +75,42 @@ final class CalmPageNativeTests: XCTestCase {
         XCTAssertEqual(note, RenderedNote(title: "Legacy", html: "", plainText: "Legacy", headings: [HeadingItem(id: "heading-0", level: 1, title: "Legacy")], blocks: [.paragraph("Legacy")]))
     }
 
+    func testRenderCachePruneDeletesFilesOlderThanSevenDays() throws {
+        let root = try makeTempVault()
+        let cache = RenderCacheStore(directory: root.appendingPathComponent("cache"))
+        try FileManager.default.createDirectory(at: cache.directory, withIntermediateDirectories: true)
+        let oldURL = cache.directory.appendingPathComponent("old.json")
+        let freshURL = cache.directory.appendingPathComponent("fresh.json")
+        try "old".write(to: oldURL, atomically: true, encoding: .utf8)
+        try "fresh".write(to: freshURL, atomically: true, encoding: .utf8)
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-(8 * 24 * 60 * 60))], ofItemAtPath: oldURL.path)
+        try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-60)], ofItemAtPath: freshURL.path)
+
+        try cache.prune(now: now)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: oldURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: freshURL.path))
+    }
+
+    func testRenderCachePruneKeepsCacheUnderMaxSize() throws {
+        let root = try makeTempVault()
+        let cache = RenderCacheStore(directory: root.appendingPathComponent("cache"))
+        try FileManager.default.createDirectory(at: cache.directory, withIntermediateDirectories: true)
+        let oldestURL = cache.directory.appendingPathComponent("oldest.json")
+        let newerURL = cache.directory.appendingPathComponent("newer.json")
+        try Data(repeating: 1, count: 60).write(to: oldestURL)
+        try Data(repeating: 2, count: 60).write(to: newerURL)
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-120)], ofItemAtPath: oldestURL.path)
+        try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-60)], ofItemAtPath: newerURL.path)
+
+        try cache.prune(maxAge: 7 * 24 * 60 * 60, maxSizeBytes: 100, now: now)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: oldestURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: newerURL.path))
+    }
+
     @MainActor
     func testPinsPersistInModelState() {
         let model = makeModel()
@@ -108,11 +145,28 @@ final class CalmPageNativeTests: XCTestCase {
         )
         try? model.indexFilesForTesting([file], root: RootFolder(id: "/tmp", url: URL(fileURLWithPath: "/tmp"), name: "tmp"))
 
+        model.paletteQuery = ""
+        XCTAssertTrue(model.paletteItems.contains { $0.title == "Open Folder" })
+        XCTAssertTrue(model.paletteItems.contains { $0.title == "Refresh Workspace" })
+
         model.paletteQuery = "/ native"
         XCTAssertTrue(model.paletteItems.contains { $0.title == "Native Design" })
 
         model.paletteQuery = "> sidebar"
         XCTAssertTrue(model.paletteItems.contains { $0.title == "Toggle Sidebar" })
+    }
+
+    @MainActor
+    func testPaletteCopiesActiveFilePaths() {
+        let model = makeModel()
+        let file = MarkdownFile(id: "/tmp/vault/native-design.md", url: URL(fileURLWithPath: "/tmp/vault/native-design.md"), relativePath: "native-design.md", title: "Native Design", sizeBytes: 10, modifiedAt: .now)
+        model.openFile(file)
+
+        model.runAction("Copy Active Relative Path")
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "native-design.md")
+
+        model.runAction("Copy Active Full Path")
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "/tmp/vault/native-design.md")
     }
 
     func testPaletteQueryDetectsPrefixes() {
@@ -636,6 +690,23 @@ final class CalmPageNativeTests: XCTestCase {
     }
 
     @MainActor
+    func testAppModelActiveRenderBypassesStaleCache() async throws {
+        let root = try makeTempVault()
+        let url = root.appendingPathComponent("note.md")
+        try "# New".write(to: url, atomically: true, encoding: .utf8)
+        let cacheDirectory = root.appendingPathComponent("cache")
+        let cache = RenderCacheStore(directory: cacheDirectory)
+        let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        let file = MarkdownFile(id: url.path, url: url, relativePath: "note.md", title: "Note", sizeBytes: Int64(values.fileSize ?? 0), modifiedAt: values.contentModificationDate ?? .distantPast)
+        try cache.save(RenderedNote(title: "Old", html: "", plainText: "Old", headings: [HeadingItem(id: "heading-0", level: 1, title: "Old")], blocks: []), file: file)
+        let model = makeModel(cacheDirectory: cacheDirectory)
+
+        model.openFile(file)
+
+        try await waitForLoadedNote(in: model, title: "New")
+    }
+
+    @MainActor
     func testAppModelAutoRefreshesActiveFileWhenDiskContentChanges() async throws {
         let root = try makeTempVault()
         let url = root.appendingPathComponent("watched.md")
@@ -649,6 +720,9 @@ final class CalmPageNativeTests: XCTestCase {
         try "# Watched update".write(to: url, atomically: true, encoding: .utf8)
 
         try await waitForLoadedNote(in: model, title: "Watched update", attempts: 120)
+        try "# Watched again".write(to: url, atomically: true, encoding: .utf8)
+
+        try await waitForLoadedNote(in: model, title: "Watched again", attempts: 120)
         XCTAssertEqual(model.workspaceRefreshMessage, "Updated from disk")
     }
 
