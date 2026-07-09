@@ -28,6 +28,25 @@ final class CalmPageNativeTests: XCTestCase {
         XCTAssertFalse(text.contains("---"))
     }
 
+    func testMarkdownTaskListStaysPlainText() {
+        let blocks = ReadmdRenderer.markdownBlocks("- [ ] Todo\n- [x] Done\n- Normal")
+
+        XCTAssertEqual(blocks, [.paragraph("- [ ] Todo"), .paragraph("- [x] Done"), .bullet("Normal")])
+    }
+
+    func testMarkdownParagraphPreservesSoftLineBreaks() {
+        let blocks = ReadmdRenderer.markdownBlocks("P1: 1. One\nP2: 2. Two\nP3: 3. Three")
+
+        XCTAssertEqual(blocks, [.paragraph("P1: 1. One\nP2: 2. Two\nP3: 3. Three")])
+    }
+
+    func testObsidianLinksPreprocessToInternalMarkdownLinks() {
+        let markdown = ReadmdRenderer.preprocessObsidianLinks("See [[Folder/Note#Intro|nice note]] and ![[image.png]]")
+
+        XCTAssertTrue(markdown.contains("[nice note](calmpage-wiki://open?target=Folder/Note%23Intro)"))
+        XCTAssertTrue(markdown.contains("![[image.png]]"))
+    }
+
     func testRenderCacheReturnsStoredNoteForSameFileMetadata() async throws {
         let root = try makeTempVault()
         let url = root.appendingPathComponent("cached.md")
@@ -154,6 +173,45 @@ final class CalmPageNativeTests: XCTestCase {
 
         model.paletteQuery = "> sidebar"
         XCTAssertTrue(model.paletteItems.contains { $0.title == "Toggle Sidebar" })
+
+        model.paletteQuery = "> show active"
+        XCTAssertTrue(model.paletteItems.contains { $0.title == "Show Active File in Library" })
+    }
+
+    @MainActor
+    func testLibrarySnapshotShowsAllFilesWhenFilterIsEmpty() async throws {
+        let model = makeModel()
+        let root = RootFolder(id: "/tmp/vault", url: URL(fileURLWithPath: "/tmp/vault"), name: "vault")
+        let files = [
+            MarkdownFile(id: "/tmp/vault/a.md", url: URL(fileURLWithPath: "/tmp/vault/a.md"), relativePath: "a.md", title: "A", sizeBytes: 1, modifiedAt: .now),
+            MarkdownFile(id: "/tmp/vault/b.md", url: URL(fileURLWithPath: "/tmp/vault/b.md"), relativePath: "b.md", title: "B", sizeBytes: 1, modifiedAt: .now)
+        ]
+        try model.indexFilesForTesting(files, root: root)
+
+        try await waitForVisibleFiles(in: model, count: 2)
+
+        XCTAssertEqual(model.visibleFilesSnapshot.map(\.id), files.map(\.id))
+    }
+
+    @MainActor
+    func testShowFileInLibrarySwitchesToLibraryAndCreatesRevealRequest() async throws {
+        let model = makeModel()
+        let file = MarkdownFile(id: "/tmp/vault/docs/notes/note.md", url: URL(fileURLWithPath: "/tmp/vault/docs/notes/note.md"), relativePath: "docs/notes/note.md", title: "Note", sizeBytes: 1, modifiedAt: .now)
+        try model.indexFilesForTesting([file], root: RootFolder(id: "/tmp/vault", url: URL(fileURLWithPath: "/tmp/vault"), name: "vault"))
+        model.sidebarMode = .pins
+
+        model.showFileInLibrary(file)
+
+        XCTAssertEqual(model.sidebarMode, .library)
+        XCTAssertEqual(model.query, "")
+        XCTAssertEqual(model.libraryRevealRequest?.rootID, "/tmp/vault")
+        XCTAssertEqual(model.libraryRevealRequest?.folderPaths, ["docs", "docs/notes"])
+        XCTAssertEqual(model.libraryRevealRequest?.fileID, file.id)
+    }
+
+    func testParentFolderPathsForLibraryReveal() {
+        XCTAssertEqual(AppModel.parentFolderPaths(for: "a/b/c.md"), ["a", "a/b"])
+        XCTAssertEqual(AppModel.parentFolderPaths(for: "c.md"), [])
     }
 
     @MainActor
@@ -658,6 +716,111 @@ final class CalmPageNativeTests: XCTestCase {
     }
 
     @MainActor
+    func testAppModelOpensRelativeMarkdownLinkFromActiveFile() async throws {
+        let root = try makeTempVault()
+        let docs = root.appendingPathComponent("docs")
+        try FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+        let firstURL = docs.appendingPathComponent("first.md")
+        let secondURL = docs.appendingPathComponent("second.md")
+        try "# First".write(to: firstURL, atomically: true, encoding: .utf8)
+        try "# Second".write(to: secondURL, atomically: true, encoding: .utf8)
+        let model = makeModel(cacheDirectory: root.appendingPathComponent("cache"))
+        let rootFolder = RootFolder(id: root.path, url: root, name: root.lastPathComponent)
+        let first = MarkdownFile(id: firstURL.path, url: firstURL, relativePath: "docs/first.md", title: "First", sizeBytes: 7, modifiedAt: .now)
+        let second = MarkdownFile(id: secondURL.path, url: secondURL, relativePath: "docs/second.md", title: "Second", sizeBytes: 8, modifiedAt: .now)
+        try model.indexFilesForTesting([first, second], root: rootFolder)
+        model.openFile(first)
+        try await waitForLoadedNote(in: model, title: "First")
+
+        model.handleReaderLink("second.md")
+
+        try await waitForLoadedNote(in: model, title: "Second")
+        XCTAssertEqual(model.activeTabID, second.id)
+    }
+
+    @MainActor
+    func testAppModelOpensFileURLMarkdownLinkFromWebView() async throws {
+        let root = try makeTempVault()
+        let firstURL = root.appendingPathComponent("first.md")
+        let secondURL = root.appendingPathComponent("second file.md")
+        try "# First".write(to: firstURL, atomically: true, encoding: .utf8)
+        try "# Second\n\n## Jump Here".write(to: secondURL, atomically: true, encoding: .utf8)
+        let model = makeModel(cacheDirectory: root.appendingPathComponent("cache"))
+        let rootFolder = RootFolder(id: root.path, url: root, name: root.lastPathComponent)
+        let first = MarkdownFile(id: firstURL.path, url: firstURL, relativePath: "first.md", title: "First", sizeBytes: 7, modifiedAt: .now)
+        let second = MarkdownFile(id: secondURL.path, url: secondURL, relativePath: "second file.md", title: "Second", sizeBytes: 23, modifiedAt: .now)
+        try model.indexFilesForTesting([first, second], root: rootFolder)
+        model.openFile(first)
+        try await waitForLoadedNote(in: model, title: "First")
+
+        var components = URLComponents(url: secondURL, resolvingAgainstBaseURL: false)!
+        components.fragment = "Jump Here"
+        model.handleReaderLink(components.url!.absoluteString)
+
+        try await waitForLoadedNote(in: model, title: "Second")
+        XCTAssertEqual(model.activeTabID, second.id)
+        XCTAssertEqual(model.activeHeadingID, "heading-2")
+    }
+
+    @MainActor
+    func testAppModelOpensExtensionlessMarkdownLink() async throws {
+        let root = try makeTempVault()
+        let firstURL = root.appendingPathComponent("first.md")
+        let secondURL = root.appendingPathComponent("second.md")
+        try "# First".write(to: firstURL, atomically: true, encoding: .utf8)
+        try "# Second".write(to: secondURL, atomically: true, encoding: .utf8)
+        let model = makeModel(cacheDirectory: root.appendingPathComponent("cache"))
+        let rootFolder = RootFolder(id: root.path, url: root, name: root.lastPathComponent)
+        let first = MarkdownFile(id: firstURL.path, url: firstURL, relativePath: "first.md", title: "First", sizeBytes: 7, modifiedAt: .now)
+        let second = MarkdownFile(id: secondURL.path, url: secondURL, relativePath: "second.md", title: "Second", sizeBytes: 8, modifiedAt: .now)
+        try model.indexFilesForTesting([first, second], root: rootFolder)
+        model.openFile(first)
+        try await waitForLoadedNote(in: model, title: "First")
+
+        model.handleReaderLink("second")
+
+        try await waitForLoadedNote(in: model, title: "Second")
+        XCTAssertEqual(model.activeTabID, second.id)
+    }
+
+    @MainActor
+    func testAppModelOpensWikiLinkAndJumpsHeading() async throws {
+        let root = try makeTempVault()
+        let noteURL = root.appendingPathComponent("Note.md")
+        let targetURL = root.appendingPathComponent("Target.md")
+        try "# Note".write(to: noteURL, atomically: true, encoding: .utf8)
+        try "# Target\n\n## Intro".write(to: targetURL, atomically: true, encoding: .utf8)
+        let model = makeModel(cacheDirectory: root.appendingPathComponent("cache"))
+        let rootFolder = RootFolder(id: root.path, url: root, name: root.lastPathComponent)
+        let note = MarkdownFile(id: noteURL.path, url: noteURL, relativePath: "Note.md", title: "Note", sizeBytes: 6, modifiedAt: .now)
+        let target = MarkdownFile(id: targetURL.path, url: targetURL, relativePath: "Target.md", title: "Target", sizeBytes: 18, modifiedAt: .now)
+        try model.indexFilesForTesting([note, target], root: rootFolder)
+        model.openFile(note)
+        try await waitForLoadedNote(in: model, title: "Note")
+
+        model.handleReaderLink("calmpage-wiki://open?target=Target%23Intro")
+
+        try await waitForLoadedNote(in: model, title: "Target")
+        XCTAssertEqual(model.activeTabID, target.id)
+        XCTAssertEqual(model.activeHeadingID, "heading-2")
+    }
+
+    @MainActor
+    func testAppModelJumpsSameFileAnchor() async throws {
+        let root = try makeTempVault()
+        let url = root.appendingPathComponent("note.md")
+        try "# Note\n\n## Details".write(to: url, atomically: true, encoding: .utf8)
+        let model = makeModel(cacheDirectory: root.appendingPathComponent("cache"))
+        let file = MarkdownFile(id: url.path, url: url, relativePath: "note.md", title: "Note", sizeBytes: 18, modifiedAt: .now)
+        model.openFile(file)
+        try await waitForLoadedNote(in: model, title: "Note")
+
+        model.handleReaderLink("#Details")
+
+        XCTAssertEqual(model.activeHeadingID, "heading-2")
+    }
+
+    @MainActor
     func testAppModelIgnoresNonMarkdownURL() throws {
         let root = try makeTempVault()
         let url = root.appendingPathComponent("notes.txt")
@@ -967,5 +1130,14 @@ final class CalmPageNativeTests: XCTestCase {
             try await Task.sleep(nanoseconds: 20_000_000)
         }
         XCTFail("Timed out waiting for pasted path match named \(title)")
+    }
+
+    @MainActor
+    private func waitForVisibleFiles(in model: AppModel, count: Int) async throws {
+        for _ in 0..<50 {
+            if model.visibleFilesSnapshot.count == count { return }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTFail("Timed out waiting for \(count) visible files")
     }
 }

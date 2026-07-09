@@ -224,6 +224,13 @@ struct LibraryChildren: Equatable {
     static let empty = LibraryChildren(folders: [], files: [])
 }
 
+struct LibraryRevealRequest: Equatable {
+    let id = UUID()
+    let rootID: String
+    let folderPaths: Set<String>
+    let fileID: String
+}
+
 struct AppDebugCounters: Equatable {
     var rootsCount: Int
     var indexedFileCount: Int

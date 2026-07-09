@@ -680,30 +680,56 @@ struct LibraryPaneView: View {
         VStack(spacing: 8) {
             if !model.pinnedFilesSnapshot.isEmpty {
                 SectionLabel("PINNED")
-                ForEach(model.pinnedFilesSnapshot.prefix(5)) { file in
-                    FileRowView(file: file)
-                        .contextMenu { FileContextMenu(file: file) }
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        ForEach(model.pinnedFilesSnapshot) { file in
+                            FileRowView(file: file)
+                                .contextMenu { FileContextMenu(file: file) }
+                        }
+                    }
                 }
+                .frame(maxHeight: 176)
             }
             SectionLabel(model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "FOLDERS" : "MATCHING FILES")
-            List {
-                if model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    ForEach(model.activeRoots) { root in
-                        RootNodeView(root: root)
-                            .listRowBackground(AppTheme.sidebarBackground(model.selectedTheme))
+            ScrollViewReader { proxy in
+                List {
+                    if model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        ForEach(model.activeRoots) { root in
+                            RootNodeView(root: root)
+                                .listRowBackground(AppTheme.sidebarBackground(model.selectedTheme))
+                        }
+                        if model.activeRoots.isEmpty {
+                            Text("No folders added")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.secondaryText(model.selectedTheme))
+                                .listRowBackground(AppTheme.sidebarBackground(model.selectedTheme))
+                        }
+                    } else {
+                        ForEach(model.visibleFilesSnapshot) { file in
+                            FileRowView(file: file)
+                                .id(file.id)
+                                .contextMenu { FileContextMenu(file: file) }
+                                .padding(.vertical, 2)
+                                .listRowBackground(AppTheme.sidebarBackground(model.selectedTheme))
+                        }
+                        if model.visibleFilesSnapshot.isEmpty {
+                            Text(model.isIndexing ? "Indexing..." : "No matching files")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.secondaryText(model.selectedTheme))
+                                .listRowBackground(AppTheme.sidebarBackground(model.selectedTheme))
+                        }
                     }
-                } else {
-                    ForEach(model.visibleFilesSnapshot) { file in
-                        FileRowView(file: file)
-                            .contextMenu { FileContextMenu(file: file) }
-                            .padding(.vertical, 2)
-                            .listRowBackground(AppTheme.sidebarBackground(model.selectedTheme))
+                }
+                .scrollContentBackground(.hidden)
+                .background(AppTheme.sidebarBackground(model.selectedTheme))
+                .listStyle(.plain)
+                .onChange(of: model.libraryRevealRequest?.id) { _, _ in
+                    guard let fileID = model.libraryRevealRequest?.fileID else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(fileID, anchor: .center) }
                     }
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(AppTheme.sidebarBackground(model.selectedTheme))
-            .listStyle(.plain)
         }
     }
 }
@@ -724,8 +750,11 @@ struct RootNodeView: View {
                 }
                 ForEach(children.files) { file in
                     FileRowView(file: file)
+                        .id(file.id)
                         .contextMenu { FileContextMenu(file: file) }
                         .padding(.vertical, 2)
+                        .background(model.isLibraryRevealTarget(file) ? AppTheme.activeControlBackground(model.selectedTheme) : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                         .listRowBackground(AppTheme.sidebarBackground(model.selectedTheme))
                 }
                 if children.folders.isEmpty && children.files.isEmpty {
@@ -758,6 +787,17 @@ struct RootNodeView: View {
             guard isExpanded else { return }
             Task { children = await model.loadLibraryChildren(parentPath: nil, rootID: root.id) }
         }
+        .onChange(of: model.libraryRevealRequest?.id) { _, _ in revealIfNeeded() }
+        .onAppear { revealIfNeeded() }
+    }
+
+    private func revealIfNeeded() {
+        guard model.libraryRevealRequest?.rootID == root.id else { return }
+        isExpanded = true
+        Task {
+            children = await model.loadLibraryChildren(parentPath: nil, rootID: root.id)
+            didLoadChildren = true
+        }
     }
 }
 
@@ -778,8 +818,11 @@ struct FolderNodeView: View {
                 }
                 ForEach(children.files) { file in
                     FileRowView(file: file)
+                        .id(file.id)
                         .contextMenu { FileContextMenu(file: file) }
                         .padding(.vertical, 2)
+                        .background(model.isLibraryRevealTarget(file) ? AppTheme.activeControlBackground(model.selectedTheme) : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                         .listRowBackground(AppTheme.sidebarBackground(model.selectedTheme))
                 }
             }
@@ -792,6 +835,18 @@ struct FolderNodeView: View {
             guard expanded, !didLoadChildren else { return }
             didLoadChildren = true
             Task { children = await model.loadLibraryChildren(parentPath: folder.path, rootID: rootID) }
+        }
+        .onChange(of: model.libraryRevealRequest?.id) { _, _ in revealIfNeeded() }
+        .onAppear { revealIfNeeded() }
+    }
+
+    private func revealIfNeeded() {
+        guard model.libraryRevealRequest?.rootID == rootID,
+              model.libraryRevealRequest?.folderPaths.contains(folder.path) == true else { return }
+        isExpanded = true
+        Task {
+            children = await model.loadLibraryChildren(parentPath: folder.path, rootID: rootID)
+            didLoadChildren = true
         }
     }
 }
@@ -982,6 +1037,10 @@ struct FileRowView: View {
                 Spacer()
             }
             .contentShape(Rectangle())
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(model.isLibraryRevealTarget(file) ? AppTheme.activeControlBackground(model.selectedTheme) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
     }
@@ -992,6 +1051,7 @@ struct FileContextMenu: View {
     let file: MarkdownFile
     var body: some View {
         Button("Open") { model.openFile(file) }
+        Button("Show in Library") { model.showFileInLibrary(file) }
         Button(model.isPinned(file) ? "Unpin File" : "Pin File") { model.togglePin(file) }
         Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file.url]) }
         Button("Copy Relative Path") { model.copyToPasteboard(file.relativePath) }
@@ -1414,11 +1474,13 @@ struct ReaderView: View {
             if case .loaded(let note) = model.readerState, !note.html.isEmpty {
                 ReadmdHTMLView(
                     html: note.html,
+                    baseURL: model.activeTab?.file.url.deletingLastPathComponent(),
                     headings: note.headings,
                     theme: model.selectedTheme,
                     headingTargetID: model.headingScrollTargetID,
                     scrollCommand: model.readerScrollCommand,
                     findRequest: model.documentFindRequest,
+                    onLinkClick: { model.handleReaderLink($0) },
                     onFindStatusChange: { model.updateDocumentFindStatus(current: $0, total: $1) },
                     onActiveHeadingChange: { model.updateActiveHeading(id: $0) }
                 )
@@ -1483,11 +1545,13 @@ struct ReaderView: View {
 
 struct ReadmdHTMLView: NSViewRepresentable {
     let html: String
+    let baseURL: URL?
     let headings: [HeadingItem]
     let theme: String
     let headingTargetID: String?
     let scrollCommand: ReaderScrollCommand?
     let findRequest: DocumentFindRequest?
+    let onLinkClick: (String) -> Void
     let onFindStatusChange: (Int, Int) -> Void
     let onActiveHeadingChange: (String) -> Void
 
@@ -1508,7 +1572,7 @@ struct ReadmdHTMLView: NSViewRepresentable {
         webView.layer?.backgroundColor = nsReaderBackground(theme).cgColor
         if context.coordinator.loadedHTML != html {
             context.coordinator.loadedHTML = html
-            webView.loadHTMLString(html, baseURL: nil)
+            webView.loadHTMLString(html, baseURL: baseURL)
         }
         if context.coordinator.lastScrollCommandID != scrollCommand?.id {
             context.coordinator.lastScrollCommandID = scrollCommand?.id
@@ -1529,7 +1593,7 @@ struct ReadmdHTMLView: NSViewRepresentable {
         }
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(headings: headings, onFindStatusChange: onFindStatusChange, onActiveHeadingChange: onActiveHeadingChange) }
+    func makeCoordinator() -> Coordinator { Coordinator(headings: headings, onLinkClick: onLinkClick, onFindStatusChange: onFindStatusChange, onActiveHeadingChange: onActiveHeadingChange) }
 
     private static func javascriptStringLiteral(_ string: String) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: [string]),
@@ -1555,13 +1619,25 @@ struct ReadmdHTMLView: NSViewRepresentable {
         var lastFindRequestID: UUID?
         var headings: [HeadingItem]
 
+        private let onLinkClick: (String) -> Void
         private let onFindStatusChange: (Int, Int) -> Void
         private let onActiveHeadingChange: (String) -> Void
 
-        init(headings: [HeadingItem], onFindStatusChange: @escaping (Int, Int) -> Void, onActiveHeadingChange: @escaping (String) -> Void) {
+        init(headings: [HeadingItem], onLinkClick: @escaping (String) -> Void, onFindStatusChange: @escaping (Int, Int) -> Void, onActiveHeadingChange: @escaping (String) -> Void) {
             self.headings = headings
+            self.onLinkClick = onLinkClick
             self.onFindStatusChange = onFindStatusChange
             self.onActiveHeadingChange = onActiveHeadingChange
+        }
+
+        @MainActor
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
+            guard navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url else {
+                decisionHandler(.allow)
+                return
+            }
+            decisionHandler(.cancel)
+            self.onLinkClick(url.absoluteString)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

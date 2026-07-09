@@ -10,14 +10,15 @@ struct ReadmdRenderer {
             if useCache, let cached = try cache?.load(file: file, options: options) {
                 return .loaded(cached)
             }
-            let markdown = try await Task.detached(priority: .userInitiated) {
+            let rawMarkdown = try await Task.detached(priority: .userInitiated) {
                 try String(contentsOf: file.url, encoding: .utf8)
             }.value
+            let markdown = Self.preprocessObsidianLinks(rawMarkdown)
             let plainText = Self.markdownPlainText(markdown)
             let headings = Self.extractHeadings(markdown)
             let blocks = Self.markdownBlocks(markdown)
             let title = headings.first(where: { $0.level == 1 })?.title ?? file.title
-            let html = useReadmdHTML ? ((try? await renderHTML(url: file.url, options: options, readmdPath: readmdPath)) ?? "") : ""
+            let html = useReadmdHTML ? ((try? await renderHTML(markdown: markdown, sourceURL: file.url, options: options, readmdPath: readmdPath)) ?? "") : ""
             let note = RenderedNote(title: title, html: html, plainText: plainText, headings: headings, blocks: blocks)
             try cache?.save(note, file: file, options: options)
             return .loaded(note)
@@ -27,12 +28,24 @@ struct ReadmdRenderer {
     }
 
     func renderHTML(url: URL, options: ReadmdRenderOptions = .default, readmdPath: String? = nil) async throws -> String {
+        let markdown = try String(contentsOf: url, encoding: .utf8)
+        return try await renderHTML(markdown: markdown, sourceURL: url, options: options, readmdPath: readmdPath)
+    }
+
+    func renderHTML(markdown: String, sourceURL: URL, options: ReadmdRenderOptions = .default, readmdPath: String? = nil) async throws -> String {
         guard let readmdPath, !readmdPath.isEmpty else { throw RendererError.readmd("readmd path is not configured") }
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
+                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("calmpage-render-\(UUID().uuidString)").appendingPathExtension(sourceURL.pathExtension.isEmpty ? "md" : sourceURL.pathExtension)
+                do {
+                    try markdown.write(to: tempURL, atomically: true, encoding: .utf8)
+                } catch {
+                    continuation.resume(throwing: error)
+                    return
+                }
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: readmdPath)
-                process.arguments = [url.path, "--stdout", "--theme", options.readmdTheme, "--style", options.readmdStyle, "--no-generated-by-readmd"]
+                process.arguments = [tempURL.path, "--stdout", "--theme", options.readmdTheme, "--style", options.readmdStyle, "--no-generated-by-readmd"]
 
                 let output = Pipe()
                 let error = Pipe()
@@ -40,6 +53,7 @@ struct ReadmdRenderer {
                 process.standardError = error
 
                 do {
+                    defer { try? FileManager.default.removeItem(at: tempURL) }
                     try process.run()
                     process.waitUntilExit()
                     let data = output.fileHandleForReading.readDataToEndOfFile()
@@ -54,6 +68,50 @@ struct ReadmdRenderer {
                 }
             }
         }
+    }
+
+    static func preprocessObsidianLinks(_ markdown: String) -> String {
+        var result = ""
+        var index = markdown.startIndex
+        while index < markdown.endIndex {
+            if markdown[index] == "!", markdown[markdown.index(after: index)...].hasPrefix("[[") {
+                if let close = markdown[index...].range(of: "]]" ) {
+                    result.append(String(markdown[index..<close.upperBound]))
+                    index = close.upperBound
+                } else {
+                    result.append(markdown[index])
+                    index = markdown.index(after: index)
+                }
+                continue
+            }
+            guard markdown[index...].hasPrefix("[["), let close = markdown[index...].range(of: "]]" ) else {
+                result.append(markdown[index])
+                index = markdown.index(after: index)
+                continue
+            }
+            let innerStart = markdown.index(index, offsetBy: 2)
+            let inner = String(markdown[innerStart..<close.lowerBound])
+            let parts = inner.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+            let target = parts.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let label = (parts.count > 1 ? parts[1] : target).trimmingCharacters(in: .whitespacesAndNewlines)
+            if target.isEmpty {
+                result.append(String(markdown[index..<close.upperBound]))
+            } else {
+                result.append("[")
+                result.append(label.isEmpty ? target : label)
+                result.append("](calmpage-wiki://open?target=")
+                result.append(percentEncode(target))
+                result.append(")")
+            }
+            index = close.upperBound
+        }
+        return result
+    }
+
+    private static func percentEncode(_ value: String) -> String {
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "&+=#")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
     private static func injectCSS(_ css: String, into html: String) -> String {
@@ -99,7 +157,7 @@ struct ReadmdRenderer {
         var inCode = false
 
         func flushParagraph() {
-            let text = paragraph.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = paragraph.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
             if !text.isEmpty { blocks.append(.paragraph(text)) }
             paragraph.removeAll()
         }
@@ -134,6 +192,11 @@ struct ReadmdRenderer {
                     blocks.append(.heading(id: "heading-\(index)", level: level, text: title))
                     continue
                 }
+            }
+            if trimmed.hasPrefix("- [ ] ") || trimmed.hasPrefix("* [ ] ") || trimmed.hasPrefix("- [x] ") || trimmed.hasPrefix("* [x] ") || trimmed.hasPrefix("- [X] ") || trimmed.hasPrefix("* [X] ") {
+                flushParagraph()
+                blocks.append(.paragraph(trimmed))
+                continue
             }
             if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
                 flushParagraph()

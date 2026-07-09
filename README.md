@@ -126,6 +126,13 @@ cargo test
 
 ## Release Notes
 
+### v0.1.8
+
+- Fixes Show in Library so it expands the folder tree, scrolls to the file, and highlights it.
+- Fixes Markdown links between files, including relative links, file URL links, heading anchors, and extensionless `.md` links.
+- Fixes Obsidian-style links like `[[Note]]`, `[[Note#Heading]]`, and `[[Note|Label]]` when rendered through readmd 0.1.2.
+- Restores folder-tree library browsing, full file listing, pinned-file scroll limit, and plain-text task markers.
+
 ### v0.1.7
 
 - Fixes active tab refresh so edited files reload from disk without showing stale cached content.

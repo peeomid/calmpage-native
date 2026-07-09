@@ -52,6 +52,7 @@ final class AppModel: ObservableObject {
     @Published var documentFindRequest: DocumentFindRequest?
     @Published var documentFindStatus = DocumentFindStatus()
     @Published var libraryFilterFocusRequestID = UUID()
+    @Published var libraryRevealRequest: LibraryRevealRequest?
     @Published var workspaces: [WorkspaceItem] = [WorkspaceItem(name: "Default Workspace")]
     @Published var activeWorkspaceID: UUID?
 
@@ -66,6 +67,7 @@ final class AppModel: ObservableObject {
     private var workspaceMessageTask: Task<Void, Never>?
     private var activeFileWatcher: ActiveFileWatcher?
     private var activeFileRefreshTask: Task<Void, Never>?
+    private var pendingLinkHeading: String?
 
     init(stateStore: AppStateStore = .live, libraryStore: LibraryStore? = nil, renderer: ReadmdRenderer = ReadmdRenderer(), restoreSavedState: Bool = true) {
         self.stateStore = stateStore
@@ -198,6 +200,7 @@ final class AppModel: ObservableObject {
                 ("Toggle Focus Mode", "Reader-only layout", "text.book.closed"),
                 ("Find in Document", "Search inside current reader", "text.magnifyingglass"),
                 ("Filter Library", "Focus the library search field", "line.3.horizontal.decrease.circle"),
+                ("Show Active File in Library", "Reveal current tab in library list", "list.bullet.rectangle"),
                 ("Copy Active Relative Path", "Copy current tab path from workspace root", "doc.on.clipboard"),
                 ("Copy Active Full Path", "Copy current tab full file path", "doc.on.doc"),
                 (activePinnedFileIDs.contains(activeTab?.file.id ?? "") ? "Unpin Active File" : "Pin Active File", "Pin or unpin current tab", "pin"),
@@ -526,6 +529,7 @@ final class AppModel: ObservableObject {
                 self.readerState = result
                 if case .loaded(let note) = result {
                     self.activeHeadingID = note.headings.first?.id
+                    self.jumpToPendingLinkHeading(in: note)
                     self.refreshPaletteItems()
                 }
             }
@@ -549,6 +553,7 @@ final class AppModel: ObservableObject {
                 self.readerState = result
                 if case .loaded(let note) = result {
                     self.activeHeadingID = note.headings.first?.id
+                    self.jumpToPendingLinkHeading(in: note)
                     self.refreshPaletteItems()
                 }
                 if showUpdatedMessage { self.setWorkspaceRefreshMessage("Updated from disk") }
@@ -769,6 +774,7 @@ final class AppModel: ObservableObject {
         case "Toggle Focus Mode": focusMode.toggle()
         case "Find in Document": openDocumentFind()
         case "Filter Library": focusLibraryFilter()
+        case "Show Active File in Library": if let file = activeTab?.file { showFileInLibrary(file) }
         case "Copy Active Relative Path": if let file = activeTab?.file { copyToPasteboard(file.relativePath) }
         case "Copy Active Full Path": if let file = activeTab?.file { copyToPasteboard(file.url.path) }
         case "Pin Active File", "Unpin Active File": if let file = activeTab?.file { togglePin(file) }
@@ -807,6 +813,33 @@ final class AppModel: ObservableObject {
         sidebarCollapsed = false
         sidebarMode = .library
         libraryFilterFocusRequestID = UUID()
+    }
+
+    func showFileInLibrary(_ file: MarkdownFile) {
+        focusMode = false
+        sidebarCollapsed = false
+        sidebarMode = .library
+        query = ""
+        let containingRoot = roots
+            .filter { file.url.path == $0.url.path || file.url.path.hasPrefix($0.url.path + "/") }
+            .max { $0.url.path.count < $1.url.path.count }
+        guard let root = containingRoot else { return }
+        libraryRevealRequest = LibraryRevealRequest(rootID: root.id, folderPaths: Self.parentFolderPaths(for: file.relativePath), fileID: file.id)
+        refreshVisibleFiles(queryOverride: "")
+    }
+
+    func isLibraryRevealTarget(_ file: MarkdownFile) -> Bool {
+        libraryRevealRequest?.fileID == file.id
+    }
+
+    nonisolated static func parentFolderPaths(for relativePath: String) -> Set<String> {
+        let parts = relativePath.split(separator: "/").map(String.init)
+        guard parts.count > 1 else { return [] }
+        var paths: Set<String> = []
+        for index in 0..<(parts.count - 1) {
+            paths.insert(parts[0...index].joined(separator: "/"))
+        }
+        return paths
     }
 
     func addWorkspace(named rawName: String) {
@@ -919,6 +952,152 @@ final class AppModel: ObservableObject {
         headingScrollTargetID = heading.id
     }
 
+    func handleReaderLink(_ rawLink: String) {
+        let link = rawLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !link.isEmpty else { return }
+        if let url = URL(string: link), ["http", "https"].contains(url.scheme?.lowercased()) {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        if let url = URL(string: link), url.scheme?.lowercased() == "calmpage-wiki" {
+            let target = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "target" })?.value ?? ""
+            openWikiLink(target)
+            return
+        }
+        if link.hasPrefix("#") {
+            jumpToHeading(named: String(link.dropFirst()))
+            return
+        }
+        if let url = URL(string: link), url.isFileURL {
+            openMarkdownLink(Self.markdownLinkPath(from: url))
+            return
+        }
+        openMarkdownLink(link)
+    }
+
+    private func openMarkdownLink(_ rawLink: String) {
+        let parts = rawLink.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        let pathPart = parts.first ?? ""
+        let heading = parts.count > 1 ? parts[1] : nil
+        if pathPart.isEmpty {
+            if let heading { jumpToHeading(named: heading) }
+            return
+        }
+        let decodedPath = pathPart.removingPercentEncoding ?? pathPart
+        if let file = resolveMarkdownFile(path: decodedPath) {
+            pendingLinkHeading = heading
+            openFile(file)
+            return
+        }
+        if let url = URL(string: rawLink), url.isFileURL, !Self.supportedMarkdownExtensions.contains(url.pathExtension.lowercased()) {
+            NSWorkspace.shared.open(url)
+        } else {
+            setWorkspaceRefreshMessage("Link target not found")
+        }
+    }
+
+    private func openWikiLink(_ rawTarget: String) {
+        let parts = rawTarget.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        let target = (parts.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let heading = parts.count > 1 ? parts[1] : nil
+        guard !target.isEmpty else { return }
+        if let file = resolveWikiFile(target: target) {
+            pendingLinkHeading = heading
+            openFile(file)
+        } else {
+            setWorkspaceRefreshMessage("Wiki link not found")
+        }
+    }
+
+    private func resolveMarkdownFile(path: String) -> MarkdownFile? {
+        let path = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return nil }
+        if path.hasPrefix("file://"), let url = URL(string: path) {
+            return markdownFileForDirectOpen(url)
+        }
+        if path.hasPrefix("/") {
+            if let file = markdownFileForDirectOpen(URL(fileURLWithPath: path)) { return file }
+        }
+        var candidates: [URL] = candidateURLs(forMarkdownLinkPath: path)
+        if let activeURL = activeTab?.file.url {
+            candidates += candidateURLs(forMarkdownLinkPath: path, baseURL: activeURL.deletingLastPathComponent())
+        }
+        for root in activeRoots {
+            candidates += candidateURLs(forMarkdownLinkPath: path, baseURL: root.url)
+            if path.hasPrefix("/") {
+                candidates += candidateURLs(forMarkdownLinkPath: String(path.drop { $0 == "/" }), baseURL: root.url)
+            }
+        }
+        for candidate in candidates {
+            if let file = markdownFileForDirectOpen(candidate) { return file }
+        }
+        return nil
+    }
+
+    private func candidateURLs(forMarkdownLinkPath path: String, baseURL: URL? = nil) -> [URL] {
+        let cleaned = path.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? path
+        let base = baseURL ?? URL(fileURLWithPath: "/")
+        let url = base.appendingPathComponent(cleaned).standardizedFileURL
+        let ext = url.pathExtension.lowercased()
+        guard ext.isEmpty else { return [url] }
+        return [url] + Self.supportedMarkdownExtensions.sorted().map { url.appendingPathExtension($0) }
+    }
+
+    private func resolveWikiFile(target: String) -> MarkdownFile? {
+        let cleaned = target.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pathCandidates = wikiPathCandidates(cleaned)
+        for path in pathCandidates {
+            if let file = resolveMarkdownFile(path: path) { return file }
+        }
+        let query = URL(fileURLWithPath: cleaned).deletingPathExtension().lastPathComponent
+        let files = (try? libraryStore.searchFiles(query: query, rootIDs: activeRootIDs, limit: 80)) ?? []
+        let normalized = query.lowercased()
+        return files.first { file in
+            file.title.lowercased() == normalized ||
+            file.url.deletingPathExtension().lastPathComponent.lowercased() == normalized ||
+            file.relativePath.deletingMarkdownExtension().lowercased() == cleaned.lowercased()
+        } ?? files.first
+    }
+
+    private func wikiPathCandidates(_ target: String) -> [String] {
+        let extensions = Self.supportedMarkdownExtensions
+        if extensions.contains(URL(fileURLWithPath: target).pathExtension.lowercased()) { return [target] }
+        return [target] + extensions.sorted().map { target + "." + $0 }
+    }
+
+    private func jumpToHeading(named rawHeading: String) {
+        guard case .loaded(let note) = readerState else {
+            pendingLinkHeading = rawHeading
+            return
+        }
+        let normalized = Self.normalizedHeading(rawHeading)
+        if let heading = note.headings.first(where: { Self.normalizedHeading($0.title) == normalized || $0.id == rawHeading }) {
+            jumpToHeading(heading)
+        }
+    }
+
+    private func jumpToPendingLinkHeading(in note: RenderedNote) {
+        guard let pendingLinkHeading else { return }
+        self.pendingLinkHeading = nil
+        let normalized = Self.normalizedHeading(pendingLinkHeading)
+        if let heading = note.headings.first(where: { Self.normalizedHeading($0.title) == normalized || $0.id == pendingLinkHeading }) {
+            jumpToHeading(heading)
+        }
+    }
+
+    nonisolated static func normalizedHeading(_ value: String) -> String {
+        value.removingPercentEncoding?
+            .lowercased()
+            .replacingOccurrences(of: "-", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? value.lowercased()
+    }
+
+    nonisolated static func markdownLinkPath(from url: URL) -> String {
+        var path = url.path
+        if let fragment = url.fragment, !fragment.isEmpty { path += "#" + fragment }
+        return path
+    }
+
     func updateActiveHeading(id: String) {
         guard activeHeadingID != id else { return }
         activeHeadingID = id
@@ -953,6 +1132,12 @@ final class AppModel: ObservableObject {
         ensureDefaultWorkspace()
         inferEmptyWorkspaceFoldersFromNames()
         activeWorkspaceID = state.activeWorkspaceID.flatMap { id in workspaces.contains { $0.id == id } ? id : nil } ?? workspaces.first?.id
+        if !roots.isEmpty,
+           let activeWorkspaceID,
+           workspaces.first(where: { $0.id == activeWorkspaceID })?.rootIDs.isEmpty == true,
+           let defaultID = workspaces.first(where: { $0.name == "Default Workspace" })?.id {
+            self.activeWorkspaceID = defaultID
+        }
         workspacePinnedFileIDs = Dictionary(uniqueKeysWithValues: state.workspacePinnedFileIDs.compactMap { key, value in
             guard let id = UUID(uuidString: key) else { return nil }
             return (id, Set(value))
@@ -1209,13 +1394,14 @@ final class AppModel: ObservableObject {
         )
     }
 
-    private static let supportedMarkdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "mdx"]
+    nonisolated static let supportedMarkdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "mdx"]
 
     private func refreshVisibleFiles(queryOverride: String? = nil) {
         let text = (queryOverride ?? query).trimmingCharacters(in: .whitespacesAndNewlines)
         let rootIDs = activeRootIDs
+        let limit = max(fileCount, 500)
         Task.detached(priority: .utility) { [libraryStore] in
-            (try? libraryStore.searchFiles(query: text, rootIDs: rootIDs, limit: 500)) ?? []
+            (try? libraryStore.searchFiles(query: text, rootIDs: rootIDs, limit: limit)) ?? []
         }.storeResult { [weak self] files in self?.visibleFilesSnapshot = files }
     }
 
@@ -1292,5 +1478,14 @@ final class ActiveFileWatcher {
 private extension Task where Failure == Never {
     func storeResult(_ apply: @MainActor @escaping (Success) -> Void) {
         Task<Void, Never> { await apply(self.value) }
+    }
+}
+
+private extension String {
+    func deletingMarkdownExtension() -> String {
+        let url = URL(fileURLWithPath: self)
+        let ext = url.pathExtension.lowercased()
+        guard AppModel.supportedMarkdownExtensions.contains(ext) else { return self }
+        return String(self.dropLast(ext.count + 1))
     }
 }
